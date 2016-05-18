@@ -9,9 +9,15 @@
 	
 	ORG $80
 
-TEMP:	ds 1
-TEMP1:	ds 1
-	
+TEMP:		ds 1		; Temporary variable
+TEMP1:		ds 1		; ...
+TEMPSTACK:	ds 1		; Temporary variable for stack.
+KLSKIP:		ds 1		; Number of kernel lines to skip for score.
+NUMG0:		ds 1		; Score graphic for first digit
+NUMG1:		ds 1		; Score graphic for second digit
+SCROFF:		ds 4		; Score offsets (BCD biased) 
+SHOWSCR:	ds 1		; Show score mask
+SCORE:		ds 2		; Player Scores (BCD)
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Code
@@ -65,13 +71,16 @@ vertical_control:
 	STA WSYNC		;
 	STA VSYNC		; vertical sync signal is done. We are now in vblank.
 	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Vertical blank
 ;;; ;; While we're off the visible screen
 ;;; ;; do the game logic.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 vertical_blank:
+	JSR game_switches
 	JSR load_stella		; Load stella registers
+	JSR calculate_score_offsets
 	STA WSYNC		; Wait until next line
 	BIT TIMINT		; Clever way to check if timer ends
 	BPL vertical_blank	; without altering accumulator
@@ -79,6 +88,35 @@ vertical_blank:
 	STA VBLANK		; and get ready for kernel.
 	RTS
 
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Process Game Switches
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+game_switches:
+	LDA #$02		; For now, just set score skip to 2
+	STA KLSKIP
+
+calculate_score_offsets:
+	LDX #$01
+scrot0	LDA SCORE,X
+	AND #$0F
+	STA TEMP
+	ASL
+	ASL
+	CLC
+	ADC TEMP
+	STA SCROFF,X
+	LDA SCORE,X
+	AND #$F0
+	LSR
+	LSR
+	CLC
+	ADC TEMP
+	STA SCROFF+2,X
+	DEX
+	BPL scrot0
+	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Load Stella registers
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -107,12 +145,73 @@ ldcol0	LDA ColorTable,Y
 ;;; ;; TIA registers as appropriate
 ;;; ;; to generate the display.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-vout:	LDY #200
-vloop:	STA WSYNC
-	DEY
-	BNE vloop
-	RTS
+vout:	LDY #200		; Start at scanline 200
+	STY WSYNC		; blow a line
+	STY HMOVE		; Strobe HMOVE.
+	DEY			; 199...
+	TSX			; Move stack into X Register 
+	STX TEMPSTACK		; Save stack pointer, as it is about to be changed.
+	LDA #$02		; Set playfield control to double
+	STA CTRLPF		;
+	LDX KLSKIP		; see how many kernel lines to skip
+vskip1:	STA WSYNC		; skip X lines
+	DEX
+	BNE vskip1
+	LDA KLSKIP
+	CMP #$0E		; No score value
+	BEQ vmain		; Skip to main kernel if no score to be drawn.
+	;;
+	;; Draw the score...
+	;;
+	LDX #$05		; Score is 6 bytes high.
+	LDA #$00
+	STA NUMG0		; Clear score graphics
+	STA NUMG1		;
+vscor	STA WSYNC
+	LDA NUMG0		; Load score graphic
+	STA PF1			; Slam into PF1
+	;;
+	;; Get score offsets from table, mask them, and put them in.
+	;;
+	LDY SCROFF+2
+	LDA NUMBERS,Y		; Get left digit
+	AND #$F0		
+	STA NUMG0
+	LDY SCROFF
+	LDA NUMBERS,Y		; Right digit
+	AND #$0F
+	ORA NUMG0
+	STA NUMG0		; Left score ready 
+	LDA NUMG1
+	STA PF1
+	LDY SCROFF+3
+	LDA NUMBERS,Y
+	AND #$F0
+	STA NUMG1
+	LDY SCROFF+1
+	LDA NUMBERS,Y
+	AND SHOWSCR		; Whether to show right digits or not.
+	;;
+	STA WSYNC
+	ORA NUMG1
+	STA NUMG1
+	LDA NUMG0
+	STA PF1
+	DEX
+	BMI vmain		; If we're done, go straigt to playfield
+	;;
+	;; Otherwise, get the next set of graphics
+	;;
+	INC SCROFF
+	INC SCROFF+2
+	INC SCROFF+1
+	INC SCROFF+3
+	LDA NUMG1
+	STA PF1
+	JMP vscor		; Go back to score list.
 
+vmain	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Logic to be done during the
 ;;; ;; overscan period.
