@@ -65,9 +65,16 @@ clrlp	STA #$00,X
 	DEX
 	BNE clrlp
 
+	LDA #$3C
+	STA HIRES+2
+	STA HIRES+3
+	STA HIRES+4
+	STA HIRES+5
+	
 MLOOP:	JSR VCNTRL
 	JSR GSGRCK
 	JSR LDSTEL
+	JSR ROT
 	JSR SCROT
 	JSR VOUT
 	JMP MLOOP
@@ -200,13 +207,13 @@ ResetField
 	                        ; It is a tank game, so
 	STA  P1YPOS             ; Right tank has same Y value,
 	STA  RESP1              ; and tank is at opposite side.
-	LDA  #$08
-	STA  DIRECTION+1          ; and right player faces left.
+	LDA  #$00
+	STA  DIRECTION+1	; and right player faces left.
 	LDA  #$20
 	STA  HMP0
 	STA  HMP1
 	STA  WSYNC
-	STA  HMOVE
+	STA  HMOVE		
 CS_RTS	RTS  
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -270,6 +277,9 @@ IFnoPlane
 	STA  LORES+4
 	RTS  
 
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Load Stella Registers
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 LDSTEL	LDA  GAMVAR
 	AND  #$87
 	BMI  LDmult
@@ -305,7 +315,7 @@ LDmult	ASL
 	LDA  SWCHB
 	AND  #$08               ; Color/BW switch
 	BNE  LDcolor            ; Branch if set to Color
-	LDY  #$10               ; Force B&W colors
+	LDY  #$04               ; Force B&W colors
 	LDX  #$0F
 LDcolor	STX  TEMP
 	LDX  #$03               ; We loop 3 times to get 4 values
@@ -348,6 +358,53 @@ SCROT0	LDA  SCORE,X
 	DEX  
 	BPL  SCROT0             ;Decrement & repeat once for P0
 	RTS  
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Calculate sprite offsets.
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+ROT	LDA  #$01               ; The LO byte of CLOCK used to
+	AND  CLOCK              ; select alternate players on
+	TAX                     ; alternate frames
+	LDA  #$00
+	STA  REFP0,X            ; Step 1 taken care of.
+	AND  #$0F		;
+	TAY                     ; Y = DIRECTN[X] & 0x0F.
+	;; BIT  GUIDED     
+	BPL  ROTnoGM            ; If it's a guided missile game,
+	;; STY  DIRECTN+2,X        ; copy player bearings to missile
+ROTnoGM TXA                     ; X ^= $0E,
+	EOR  #$0E
+	TAX 
+	TYA  
+	ASL   
+	ASL   
+	ASL   
+	CMP  #$3F               ; And so step 2 begins...
+	CLC  
+	BMI  ROTnoFlip          ; Branch if <180 deg.
+	SEC
+	EOR  #$47    ;The EOR sets bits 0-2, and clears bit 4
+	;             to subtract 180 degrees from the memory
+	;             pointer, too.
+ROTnoFlip TAY  
+	;
+	;Put all the shapes where they ought to be.
+	;
+ROTnext	LDA  (SHAPES),Y
+	STA  HIRES,X
+	BCC  ROTinc 
+	DEY                     ; Decrement instead of increment
+	DEY                     ; plus cancel the upcoming INY.
+ROTinc	INY                     ; More of step 2.
+	DEX  
+	DEX                     ; X-=2.
+	BPL  ROTnext            ; Do for both, 1 then 0 then stop.
+	RTS  
+	
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; vout - The kernel, where stuff
+;;; ;; gets banged out to the visible.
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 VOUT	LDA  #$20
 	STA  SCANLINE           ; We're assuming scanline $20.
@@ -443,7 +500,7 @@ VSCOR	STA  WSYNC              ; Start with a fresh scanline.
 Vmain	LDA  #$00               ; Inner Display Loop
 	STA  PF1                ; Clear the score.
 	STA  WSYNC              
-	LDA  #$05
+	LDA  #$01
 	STA  CTRLPF             ; Reflecting playfield.
 	LDA  COLOR0
 	STA  COLUP0             ; How often must THIS be done?
@@ -541,7 +598,13 @@ VnoPF	INC  SCANLINE           ; One more up in the loop.
 	STA  PF2
 	RTS  
 	
-ClearMem RTS
+ClearMem
+	LDA  #$00
+ClrLoop	INX  
+	STA  $A2,X
+	BNE  ClrLoop  ;Continue until X rolls over.
+	RTS  
+
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Tables
@@ -715,6 +778,7 @@ NUMBERS:
 	.byte $EE ; |XXX XXX |      
 
 SHAPE:	
+
 	.byte $00
 	.byte $00
 	.byte $3C
@@ -724,12 +788,12 @@ SHAPE:
 	.byte $00
 	.byte $00
 	
-VARMAP:	
-	.BYTE  $24 ;Game 1:  0010 0100  TANK
-	.BYTE  $28 ;Game 2:  0010 1000
-	.BYTE  $08 ;Game 3:  0000 1000
-	.BYTE  $20 ;Game 4:  0010 0000
-	.BYTE  $00 ;Game 5:  0000 0000
+VARMAP:
+	.byte $06
+	.byte $04
+	.byte $02
+	.byte $01
+	
 	;; .BYTE  $48 ;Game 6:  0100 1000  TANK PONG
 	;; .BYTE  $40 ;Game 7:  0100 0000
 	;; .BYTE  $54 ;Game 8:  0101 0100
