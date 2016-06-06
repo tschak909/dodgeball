@@ -153,8 +153,8 @@ Kernel:
 	;; a is now 0, so turn off vblank, so we can see stuff.
 	sta VBLANK
 	
-	;; Assume scanline 32
-	lda #$20
+	;; Assume scanline 35 once HMOVE happens.
+	lda #$23
 	sta ScanLine
 
 	;; go to next scanline and thwack HMOVE, to commit the X motion changes.
@@ -215,6 +215,9 @@ ScoreDone:
 	sta PF0
 	sta PF1
 	sta PF2
+	lda ScanLine
+	adc #$05
+	sta ScanLine
 	sta WSYNC
 	sta WSYNC
 
@@ -239,7 +242,9 @@ toploop:
 	sta WSYNC		; loop around waiting for next line
 	dex
 	bne toploop
-
+	lda ScanLine
+	adc #$07
+	
 	;;
 	;; prime Playfield registers to make main pf loop simpler.
 	;;
@@ -249,13 +254,6 @@ primepf:
 	lda #$00		; empty middle
 	sta PF1			;
 	sta PF2			;
-
-	;;
-	;; FIXME: do we need this next part? 
-	;;
-	lda #$20
-	sta ScanLine
-	sta WSYNC
 
 	;;
 	;; the inner playfield loop
@@ -310,7 +308,7 @@ vnotank:
 	lda ScanLine		; Get current scanline
 	bpl vvrefl		; if we're < 127, then don't reflect.
 	eor #$F8		; otherwise flip bits to reflect.
-vvrefl:	cmp #$20		; figure out if we're at last playfield line, if so, done.
+vvrefl:	cmp #$19		; figure out if we're at last playfield line, if so, done.
 	bcc vfdone		;
 	lsr			; divide the scanline counter by 8.
 	lsr			;
@@ -339,7 +337,7 @@ vnot1:	sta GRP1		; slam it into GRP1
 	sta PF2			;
 	inc ScanLine		; increment to next scanline
 	lda ScanLine		; get current scanline
-	eor #$CE		; are we done?
+	eor #$D8		; are we done?
 	bne vfield		; if not, loop around.
 
 	;;
@@ -426,6 +424,7 @@ PF1_0
 	.byte $00
 	.byte $00
 	.byte $00
+	.byte $00
 	
 	.byte $00
 	.byte $00
@@ -439,7 +438,9 @@ PF1_0
 	.byte $20
 	.byte $23
 	
-PF2_0	.byte $00
+PF2_0
+	.byte $00
+	.byte $00
 	.byte $00
 	.byte $00
 	.byte $00
