@@ -11,6 +11,7 @@
 	SEG.U VARS
 	ORG $80
 
+Frame:		ds 1	        ; Frame counter.
 ScanLine:	ds 1		; scanline counter
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
@@ -25,6 +26,9 @@ ScoreGfx:	ds 1		; pointers
 TimerGfx:	ds 1		; pointers
 Temp:		ds 1		; Temp
 TempStackPtr:	ds 1		; Temporary Stack Pointer
+GameState:	ds 1		; store game state (BIT tested)
+Temp2:		ds 1		; another temp value
+ColorCycle:	ds 1		; Color cycling temp value (attract mode)
 	
 	SEG CODE
 	ORG $F800
@@ -55,11 +59,17 @@ MainLoop:
 
 VerticalSync:
 	lda #$02		; Get ready to start VSYNC
-	ldx #45
+	ldx #44
 	sta WSYNC		; Next line
 	sta VSYNC		; Start VSYNC
 	stx TIM64T
 	sta CTRLPF
+	lda Frame		; (8 bit frame counter)
+	and #$3F		; (we only want to act every 64 frames)
+	bne ColorSkip		; don't update color cycle if not @64 frames
+	dec ColorCycle
+ColorSkip:
+	inc Frame		; otherwise increment the frame counter.
 	sta WSYNC
 	sta WSYNC
 	lda #$00
@@ -88,13 +98,25 @@ ProcessSwitches:
 NoNuGam:
 	;;  Start switch not pressed
 SetTia:
+	lda #$FF
+	sta Temp2		; default color mask
+	and ColorCycle		; color cycle
+	bit GameState
+	bpl GameOver
+	lda #$00		; if game is active, no color cycle.
+GameOver:
+	sta Temp
 	ldx #$03		; Color register offset
 	ldy #$03		; color table offset.
 	lda SWCHB		; check B/W switch
 	and #$08		; pressed?
 	bne SOCloop		; if not pressed, offset is still 0 (or the color table)
+	lda #$0f
+	sta Temp2
 SOCloop:
 	lda Colors,Y		; Get next color
+	eor Temp
+	and Temp2
 	sta COLUP0,x		; set color into register
 	dey
 	dex
@@ -165,6 +187,9 @@ Kernel:
 	tsx
 	stx TempStackPtr
 
+	;; Add a dash of padding. :)
+	sta WSYNC
+	
 	;;
 	;; two digit score for p0 and p1
 	;;
