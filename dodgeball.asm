@@ -29,12 +29,19 @@ TempStackPtr:	ds 1		; Temporary Stack Pointer
 GameState:	ds 1		; store game state (BIT tested)
 Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
+JoystickSave:	ds 1		; A temporary storage of swcha.
+P0HMOVE:	ds 1		; P0 HMOVE value
+P1HMOVE:	ds 1		; P1 HMOVE value
+Temp3:		ds 1		; Temp 3 for joystick stuff
 	
 	SEG CODE
 	ORG $F800
 
 ColdStart:
 	CLEAN_START
+	;;
+	;; all this is temporary
+	;; 
 	lda #$32
 	sta PlayerY0
 	sta RESM0
@@ -67,7 +74,7 @@ VerticalSync:
 	lda Frame		; (8 bit frame counter)
 	and #$3F		; (we only want to act every 64 frames)
 	bne ColorSkip		; don't update color cycle if not @64 frames
-	dec ColorCycle
+	inc ColorCycle
 ColorSkip:
 	inc Frame		; otherwise increment the frame counter.
 	sta WSYNC
@@ -94,9 +101,28 @@ ProcessSwitches:
 	lda SWCHB
 	lsr
 	bcs NoNuGam	      ; go to no nu game if not pressed.
-	sta RESP0		; Test code, scoot the player 0 to left.
+	;;  Reset/Start pressed.
+	;;  Reset player positions.
+	ldx #$87
+	stx PlayerY0
+	stx PlayerY1
+	nop
+	nop
+	stx RESP0		; Put us somewhere close to left of screen.
+	ldx #$FF
+	stx GameState
+	SLEEP 33
+	stx RESP1		; Put P1 on the right side of screen.
 NoNuGam:
-	;;  Start switch not pressed
+	lsr			; get select value
+	bcs SetTia		; select not pressed.
+	;;
+	;;  select pressed.
+	;; 
+	ldx #$00		; put $00 into
+	stx GameState		; into GameState, re-enabling attract.
+	
+	;;  Start/select  switch not pressed
 SetTia:
 	lda #$FF
 	sta Temp2		; default color mask
@@ -121,7 +147,46 @@ SOCloop:
 	dey
 	dex
 	bpl SOCloop		; branch if not end of table.
-
+	;; 
+	;; Handle joysticks
+	;;
+HandleSticks:
+	ldx #$00		; Start with second one.
+	lda SWCHA		; get joystick switches.
+ScanNextStick:	
+	ldy #$00
+	sty HMP0,X		; set motion to 0
+	asl			; Check right.
+	bcs CheckLeft		; Right not pressed? check left
+	ldy #$F0
+	sty HMP0,X
+CheckLeft:
+	asl
+	bcs CheckDown		; Left not pressed? check down
+	ldy #$10
+	sty HMP0,X
+CheckDown:
+	asl
+	bcs CheckUp		; Down not pressed? check up
+	sta Temp3
+	lda PlayerY0,X
+	adc #$02
+	sta PlayerY0,X
+	lda Temp3
+CheckUp:
+	asl			;
+	bcs CheckEnd		;
+	sta Temp3
+	lda PlayerY0,X
+	sbc #$02
+	sta PlayerY0,X
+	lda Temp3
+CheckEnd:	
+	inx			;
+	cpx #$02		; Did we check player 1?
+	bne ScanNextStick	; Nope? Check it, otherwise fall through.
+	
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -168,9 +233,11 @@ PSFDloop:
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 Kernel:
+	lda #$00
+KernelWait:	
 	;; wait for timer to run out
 	lda INTIM
-	bne Kernel
+	bne KernelWait
 
 	;; a is now 0, so turn off vblank, so we can see stuff.
 	sta VBLANK
