@@ -29,10 +29,12 @@ TempStackPtr:	ds 1		; Temporary Stack Pointer
 GameState:	ds 1		; store game state (BIT tested)
 Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
-JoystickSave:	ds 1		; A temporary storage of swcha.
-P0HMOVE:	ds 1		; P0 HMOVE value
-P1HMOVE:	ds 1		; P1 HMOVE value
-Temp3:		ds 1		; Temp 3 for joystick stuff
+JoystickStates:	ds 1		; Joystick states.
+P0XVelocity:	ds 1		; P0 X Velocity
+P1XVelocity:	ds 1		; P0 Y Velocity
+P0YVelocity:	ds 1		; P1 X Velocity
+P1YVelocity:	ds 1		; P1 Y Velocity
+VelocityTemp:	ds 1		; used for velocity unpacking.
 	
 	SEG CODE
 	ORG $F800
@@ -41,7 +43,7 @@ ColdStart:
 	CLEAN_START
 	;;
 	;; all this is temporary
-	;; 
+	;;
 	lda #$32
 	sta PlayerY0
 	sta RESM0
@@ -147,45 +149,59 @@ SOCloop:
 	dey
 	dex
 	bpl SOCloop		; branch if not end of table.
-	;; 
-	;; Handle joysticks
-	;;
-HandleSticks:
-	ldx #$00		; Start with second one.
-	lda SWCHA		; get joystick switches.
-ScanNextStick:	
-	ldy #$00
-	sty HMP0,X		; set motion to 0
-	asl			; Check right.
-	bcs CheckLeft		; Right not pressed? check left
-	ldy #$F0
-	sty HMP0,X
-CheckLeft:
-	asl
-	bcs CheckDown		; Left not pressed? check down
-	ldy #$10
-	sty HMP0,X
-CheckDown:
-	asl
-	bcs CheckUp		; Down not pressed? check up
-	sta Temp3
-	lda PlayerY0,X
-	adc #$02
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Parse velocity variables, and adjust player motion
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;;
+;;; ;; x = current player
+;;; ;; y = velocity table offset
+;;; ;;
+DoMotion:
+	ldx #$00
+DoHorizMotion:
+	ldy P0XVelocity,x	; Get velocity index
+	lda HORIZ_VELOCITY,y	; Get value from index
+	and #$0F		; mask off the HMOVE component, leaving initial delay
+	sta VelocityTemp	; store in temp
+	lda Frame		; get current frame
+	and VelocityTemp	; mask against initial delay
+	bne DoVertMotion	; and skip to vertical motion if we aren't ready to move.
+	lda HORIZ_VELOCITY,y	; otherwise, grab the horizontal velocity
+	sta HMP0,X		; and plop it into the right HMOVE register (lower 4 bits ignored)
+DoVertMotion:
+	ldy P0YVelocity,x	; get velocity index
+	lda VERT_VELOCITY,y	; get value from index
+	and #$0F		; mask away the hmove (get rid of this)
+	sta VelocityTemp	; .. let's do this after i've made vert motion not suck..
+	lda Frame
+	and VelocityTemp
+	bne DoNextPlayer
+	lda VERT_VELOCITY,y
+	bmi DoVertDown
+DoVertUp:
+	and #$F0
+	lsr
+	lsr
+	lsr
+	lsr
+	clc
+	adc PlayerY0,X
 	sta PlayerY0,X
-	lda Temp3
-CheckUp:
-	asl			;
-	bcs CheckEnd		;
-	sta Temp3
-	lda PlayerY0,X
-	sbc #$02
+	jmp DoNextPlayer
+DoVertDown:
+	and #$F0
+	lsr
+	lsr
+	lsr
+	lsr
+	sec
+	sbc PlayerY0,X
 	sta PlayerY0,X
-	lda Temp3
-CheckEnd:	
-	inx			;
-	cpx #$02		; Did we check player 1?
-	bne ScanNextStick	; Nope? Check it, otherwise fall through.
-	
+DoNextPlayer:
+	inx
+	cpx #$02
+	bne DoHorizMotion
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
@@ -471,7 +487,12 @@ OverScan:
 	lda #2			; turn back on the vertical blank
 	sta VBLANK		; 
 	lda #22			; and wait 22*64 cycles
-	sta TIM64T		;
+	;;
+	;; motion stuff
+	;;
+	lda #$00
+	sta HMCLR
+	sta TIM64T
 OSWait: sta WSYNC		; next scanline
 	lda INTIM		; check timer
 	bne OSWait		; if we're not done, we loop aroujnd.
@@ -674,6 +695,10 @@ DigitGfx:
         .byte %01000100
         .byte %01000100
 
+	;; upper nibble is delay, lower nibble is HMOVE delta.
+HORIZ_VELOCITY:	.byte $00,$17,$13,$10
+VERT_VELOCITY:	.byte $00,$17,$13,$10
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Function to check for free space at end of cart.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
