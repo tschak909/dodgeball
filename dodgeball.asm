@@ -35,6 +35,7 @@ P1XVelocity:	ds 1		; P0 Y Velocity
 P0YVelocity:	ds 1		; P1 X Velocity
 P1YVelocity:	ds 1		; P1 Y Velocity
 VelocityTemp:	ds 1		; used for velocity unpacking.
+VelocityFlip:	ds 1		; used to flip velocity values.
 	
 	SEG CODE
 	ORG $F800
@@ -158,9 +159,19 @@ SOCloop:
 ;;; ;; y = velocity table offset
 ;;; ;;
 DoMotion:
-	ldx #$00
+	ldx #$00		; start with player 0
 DoHorizMotion:
+	lda #$00		; clear velocity flip variable
+	sta VelocityFlip	;
 	ldy P0XVelocity,x	; Get velocity index
+	bpl HorizLeft		; if it's not signed, hmove goes left.
+HorizRight:
+	lda #$FF		; otherwise, set the VelocityFlip to $FF for eor later.
+	sta VelocityFlip	; 
+	tya			; move Y to A so that we can get rid of the sign.
+	and #$0F		; mask off top 4 bits. getting rid of sign.
+	tay			; move A back to Y.
+HorizLeft:
 	lda HORIZ_VELOCITY,y	; Get value from index
 	and #$0F		; mask off the HMOVE component, leaving initial delay
 	sta VelocityTemp	; store in temp
@@ -168,40 +179,56 @@ DoHorizMotion:
 	and VelocityTemp	; mask against initial delay
 	bne DoVertMotion	; and skip to vertical motion if we aren't ready to move.
 	lda HORIZ_VELOCITY,y	; otherwise, grab the horizontal velocity
+	sec			; If we need to complement, flip it over.
+	eor VelocityFlip	;
+	adc #$00		;
 	sta HMP0,X		; and plop it into the right HMOVE register (lower 4 bits ignored)
 DoVertMotion:
-	ldy P0YVelocity,x	; get velocity index
-	lda VERT_VELOCITY,y	; get value from index
-	and #$0F		; mask away the hmove (get rid of this)
-	sta VelocityTemp	; .. let's do this after i've made vert motion not suck..
-	lda Frame
-	and VelocityTemp
-	bne DoNextPlayer
-	lda VERT_VELOCITY,y
-	bmi DoVertDown
-DoVertUp:
-	and #$F0
-	lsr
-	lsr
-	lsr
-	lsr
-	clc
-	adc PlayerY0,X
-	sta PlayerY0,X
-	jmp DoNextPlayer
-DoVertDown:
-	and #$F0
-	lsr
-	lsr
-	lsr
-	lsr
-	sec
-	sbc PlayerY0,X
-	sta PlayerY0,X
+	lda #$00		; clear the velocity flip
+	sta VelocityFlip	;
+	ldy P0YVelocity,x	; Get the requested player velocity index.
+	bpl VertDown		; sign bit = go up
+VertUp:
+	tya			; do a little register gymnastics, to get rid of the sign
+	and #$0F		; ...mask it off.
+	tay			; and flip it back into the Y.
+	lda VERT_VELOCITY,y	; Get the requested velocity value from computed index
+	and #$0F		; mask off the after delay (AND MASK) move Y
+	sta VelocityTemp	; store in velocity temp
+	lda Frame		; get current frame
+	and VelocityTemp	; and the delay
+	bne DoNextPlayer	; if we're not ready to move the Y axis for this player, skip ahead.
+	lda VERT_VELOCITY,y	; else get the requested Y movement amount
+	lsr			; shift it over into the lower four bits
+	lsr			;
+	lsr			;
+	lsr			;
+	sta VelocityTemp	; keep it in Velocity temp
+	lda PlayerY0,X		; get player's current Y
+	sec			; set carry for subtract
+	sbc VelocityTemp	; subtract the requested Y amount
+	sta PlayerY0,X		; store it back in player's current Y
+	jmp DoNextPlayer	; do the next player.
+VertDown:
+	lda VERT_VELOCITY,y	; get requested vertical velocity index
+	and #$0F		; lop off the after delay movement value
+	sta VelocityTemp	; store in velocity temp
+	lda Frame		; get current frame #
+	and VelocityTemp	; and against stored delay
+	bne DoNextPlayer	; if we're not ready to move, jump already to next player.
+	lda VERT_VELOCITY,y	; otherwise, get the requested velocity
+	and #$F0		; shift it over to get the # of Y units to move down
+	lsr			;
+	lsr			;
+	lsr			;
+	lsr			; ...four times
+	clc			; clear carry to prepare for add
+	adc PlayerY0,X		; add Y value to player0
+	sta PlayerY0,X		; and store it right back.
 DoNextPlayer:
-	inx
-	cpx #$02
-	bne DoHorizMotion
+	inx			; increment player value
+	cpx #$02		; if player=2 we're done, fall through.
+	bne DoHorizMotion	; otherwise, go back and handle the next player.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
