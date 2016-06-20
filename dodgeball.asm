@@ -34,8 +34,14 @@ P0XVelocity:	ds 1		; P0 X Velocity
 P1XVelocity:	ds 1		; P0 Y Velocity
 P0YVelocity:	ds 1		; P1 X Velocity
 P1YVelocity:	ds 1		; P1 Y Velocity
+P0XIsWaiting:	ds 1		; P0 X is Waiting (BIT 7)
+P1XIsWaiting:	ds 1		; P1 X is Waiting (Bit 7)
+P0YIsWaiting:	ds 1		; P0 Y is Waiting (BIT 7)
+P1YIsWaiting:	ds 1		; P1 Y is Waiting (BIT 7)
 VelocityTemp:	ds 1		; used for velocity unpacking.
 VelocityFlip:	ds 1		; used to flip velocity values.
+WaitingTemp:	ds 1		; Waiting index temp between frames.
+
 	
 	SEG CODE
 	ORG $F800
@@ -163,6 +169,8 @@ DoMotion:
 DoHorizMotion:
 	lda #$00		; clear velocity flip variable
 	sta VelocityFlip	;
+	lda #$80		; Assume waiting until proven not.
+	sta P0XIsWaiting,x	;
 	ldy P0XVelocity,x	; Get velocity index
 	bpl HorizLeft		; if it's not signed, hmove goes left.
 HorizRight:
@@ -178,6 +186,8 @@ HorizLeft:
 	lda Frame		; get current frame
 	and VelocityTemp	; mask against initial delay
 	bne DoVertMotion	; and skip to vertical motion if we aren't ready to move.
+	lda #$00		; not waiting, clear the waiting bit.
+	sta P0XIsWaiting,x	;
 	lda HORIZ_VELOCITY,y	; otherwise, grab the horizontal velocity
 	sec			; If we need to complement, flip it over.
 	eor VelocityFlip	;
@@ -186,6 +196,8 @@ HorizLeft:
 DoVertMotion:
 	lda #$00		; clear the velocity flip
 	sta VelocityFlip	;
+	lda #$80		; Set Y is waiting, until proven otherwise.
+	sta P0YIsWaiting,x	;
 	ldy P0YVelocity,x	; Get the requested player velocity index.
 	bpl VertDown		; sign bit = go up
 VertUp:
@@ -198,6 +210,8 @@ VertUp:
 	lda Frame		; get current frame
 	and VelocityTemp	; and the delay
 	bne DoNextPlayer	; if we're not ready to move the Y axis for this player, skip ahead.
+	lda #$00		; clear P0 Y is waiting, we're not...
+	sta P0YIsWaiting,x	; 
 	lda VERT_VELOCITY,y	; else get the requested Y movement amount
 	lsr			; shift it over into the lower four bits
 	lsr			;
@@ -216,6 +230,8 @@ VertDown:
 	lda Frame		; get current frame #
 	and VelocityTemp	; and against stored delay
 	bne DoNextPlayer	; if we're not ready to move, jump already to next player.
+	lda #$00		; Clear player y is waiting, if we're not.
+	sta P0YIsWaiting,y      ; 
 	lda VERT_VELOCITY,y	; otherwise, get the requested velocity
 	and #$F0		; shift it over to get the # of Y units to move down
 	lsr			;
@@ -228,7 +244,8 @@ VertDown:
 DoNextPlayer:
 	inx			; increment player value
 	cpx #$02		; if player=2 we're done, fall through.
-	bne DoHorizMotion	; otherwise, go back and handle the next player.
+	beq PrepScoreForDisplay	; otherwise, go back and handle the next player.
+	jmp DoHorizMotion	; (we kinda went over the branch, ugh.)
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
@@ -512,14 +529,107 @@ KernelCleanup:
 OverScan:
 	sta WSYNC		; next line
 	lda #2			; turn back on the vertical blank
-	sta VBLANK		; 
+	sta VBLANK		;
 	lda #22			; and wait 22*64 cycles
-	;;
-	;; motion stuff
-	;;
 	lda #$00
 	sta HMCLR
 	sta TIM64T
+
+	;;
+	;; the motion code
+	;;
+
+	;;
+	;; first, the joystick stuff, which adds velocity to a given
+	;; direction
+	;;
+	
+Motion:	ldx #$00		; Start with player 0
+	lda SWCHA		; get player switches
+
+CheckRight:
+	asl
+	bcs CheckLeft
+	tay
+	lda P0XVelocity,x
+	cmp #$F8
+	beq RightMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0XVelocity,x
+RightMaxVelocity:	
+	tya
+CheckLeft:
+	asl
+	bcs CheckDown
+	tay
+	lda P0XVelocity,x
+	cmp #$08
+	beq LeftMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0XVelocity,x
+LeftMaxVelocity:	
+	tya
+CheckDown:
+	asl
+	bcs CheckUp
+	tay
+	lda P0YVelocity,x
+	cmp #$08
+	beq DownMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0YVelocity,x
+DownMaxVelocity:	
+	tya
+CheckUp:
+	asl
+	bcs StickEnd
+	tay
+	lda P0YVelocity,x
+	cmp #$F8
+	beq UpMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0YVelocity,x	
+UpMaxVelocity:	
+	tya
+StickEnd:
+	inx
+	cpx #$02
+	bne CheckRight
+
+VelocityDecay:
+	lda SWCHA		; Read the sticks again.
+	cmp #$FF
+	bne OSWait		; Do not do velocity decay if joystick isn't still
+
+	ldx #$00		; Start with player 0 X, end with 1 Y (4 values)
+
+DoDecay:
+	lda P0XVelocity,x
+	and #$F0
+	sta VelocityTemp
+	lda P0XVelocity,x
+	and #$0F
+	cmp #$00
+	beq DecayNext
+	sec
+	sbc #$01
+	ora VelocityTemp
+	sta P0XVelocity,x
+DecayNext:
+	inx
+	cpx #$05
+	bne DoDecay
+	
+
+	
 OSWait: sta WSYNC		; next scanline
 	lda INTIM		; check timer
 	bne OSWait		; if we're not done, we loop aroujnd.
@@ -723,8 +833,8 @@ DigitGfx:
         .byte %01000100
 
 	;; upper nibble is delay, lower nibble is HMOVE delta.
-HORIZ_VELOCITY:	.byte $00,$17,$13,$10
-VERT_VELOCITY:	.byte $00,$17,$13,$10
+HORIZ_VELOCITY:	.byte $00,$17,$17,$17,$13,$13,$10,$10,$20
+VERT_VELOCITY:	.byte $00,$17,$17,$17,$13,$13,$10,$10,$20
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Function to check for free space at end of cart.
