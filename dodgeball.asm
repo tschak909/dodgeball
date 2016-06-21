@@ -294,6 +294,7 @@ PSFDloop:
 
 Kernel:
 	lda #$00
+	sta CXCLR
 KernelWait:	
 	;; wait for timer to run out
 	lda INTIM
