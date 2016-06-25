@@ -147,6 +147,7 @@ GameOver:
 	and #$08		; pressed?
 	bne SOCloop		; if not pressed, offset is still 0 (or the color table)
 	lda #$0f
+	ldy #$07
 	sta Temp2
 SOCloop:
 	lda Colors,Y		; Get next color
