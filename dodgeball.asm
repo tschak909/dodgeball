@@ -192,6 +192,17 @@ HorizLeft:
 	sec			; If we need to complement, flip it over.
 	eor VelocityFlip	;
 	adc #$00		;
+	sta Temp		; Hold onto calculated velocity value, for a moment.
+	lda CXP0FB,x		; Check P0/P1 to PF collision.
+	bpl ExHorizMotion	; If we haven't collided with anything, execute the motion.
+HorizCollided:
+	lda Temp		; Grab the hmove velocity
+	sec			; and do a 2's compliment not
+	eor #$FF		; to flip it, so the velocity is now the opposite
+	adc #$00		; direction...
+	sta Temp		; and store it.
+ExHorizMotion:
+	lda Temp		; Bring back velocity.
 	sta HMP0,X		; and plop it into the right HMOVE register (lower 4 bits ignored)
 DoVertMotion:
 	lda #$00		; clear the velocity flip
@@ -218,6 +229,15 @@ VertUp:
 	lsr			;
 	lsr			;
 	sta VelocityTemp	; keep it in Velocity temp
+	lda CXP0FB,X		; Check collision register for P0/P1->PF
+	bpl DoVertUp		; If we haven't collided, do normal vertical up
+VertUpCollided:
+	lda PlayerY0,X		; get player's current Y
+	sec			; clear carry for add
+	adc VelocityTemp	; add the requested Y amount
+	sta PlayerY0,X		; store it back in player's current Y
+	jmp DoNextPlayer	; do the next player.	
+DoVertUp:	
 	lda PlayerY0,X		; get player's current Y
 	sec			; set carry for subtract
 	sbc VelocityTemp	; subtract the requested Y amount
@@ -238,6 +258,17 @@ VertDown:
 	lsr			;
 	lsr			;
 	lsr			; ...four times
+	sta Temp
+	lda CXP0FB,X
+	bpl DoVertDown
+VertDownCollided:
+	lda PlayerY0,X		; get player's current Y
+	sec			; set carry for subtract
+	sbc VelocityTemp	; subtract the requested Y amount
+	sta PlayerY0,X		; store it back in player's current Y
+	jmp DoNextPlayer	; do the next player.	
+DoVertDown:
+	lda Temp
 	clc			; clear carry to prepare for add
 	adc PlayerY0,X		; add Y value to player0
 	sta PlayerY0,X		; and store it right back.
