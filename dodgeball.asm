@@ -515,12 +515,12 @@ vfield:	ldx #$1F		; Place SP over ENABL
 	and #$FE		; quantise to two scanlines
 	tax			; move into x register for graphic lookup
 	and #$F0		; mask upper 4 bits
-	beq vdotank		; if we're 0, we need to do the tank.
-	lda #$00		; else don't draw a tank, and....
-	beq vnotank		; continue onward.
-vdotank:
+	beq vdoplayer		; if we're 0, we need to do the player.
+	lda #$00		; else don't draw a player, and....
+	beq vnoplayer		; continue onward.
+vdoplayer:
 	lda PLAYER,X		; load the next player graphic line
-vnotank:
+vnoplayer:
 	sta WSYNC		; go to next scanline
 	STA GRP0		; slam player0's graphic into place.
 	;;
