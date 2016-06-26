@@ -607,8 +607,7 @@ KernelCleanup:
 	ldx #$08
 wloop	sta WSYNC
 	dex
-	bpl
-	wloop
+	bpl wloop
 	lda #$00
 		
 	jmp MainLoop		; and go back to the top!
