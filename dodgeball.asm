@@ -276,8 +276,96 @@ DoVertDown:
 DoNextPlayer:
 	inx			; increment player value
 	cpx #$02		; if player=2 we're done, fall through.
-	beq PrepScoreForDisplay	; otherwise, go back and handle the next player.
+	beq Motion	; otherwise, go back and handle the next player.
 	jmp DoHorizMotion	; (we kinda went over the branch, ugh.)
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Motion code
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+Motion:	ldx #$00		; Start with player 0
+	lda SWCHA		; get player switches
+
+CheckRight:
+	asl
+	bcs CheckLeft
+	tay
+	lda P0XVelocity,x
+	cmp #$F8
+	beq RightMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0XVelocity,x
+RightMaxVelocity:	
+	tya
+CheckLeft:
+	asl
+	bcs CheckDown
+	tay
+	lda P0XVelocity,x
+	cmp #$08
+	beq LeftMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0XVelocity,x
+LeftMaxVelocity:	
+	tya
+CheckDown:
+	asl
+	bcs CheckUp
+	tay
+	lda P0YVelocity,x
+	cmp #$08
+	beq DownMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0YVelocity,x
+DownMaxVelocity:	
+	tya
+CheckUp:
+	asl
+	bcs StickEnd
+	tay
+	lda P0YVelocity,x
+	cmp #$F8
+	beq UpMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0YVelocity,x	
+UpMaxVelocity:	
+	tya
+StickEnd:
+	inx
+	cpx #$02
+	bne CheckRight
+
+VelocityDecay:
+	lda SWCHA		; Read the sticks again.
+	cmp #$FF
+	bne PrepScoreForDisplay		; Do not do velocity decay if joystick isn't still
+
+	ldx #$00		; Start with player 0 X, end with 1 Y (4 values)
+
+DoDecay:
+	lda P0XVelocity,x
+	and #$F0
+	sta VelocityTemp
+	lda P0XVelocity,x
+	and #$0F
+	cmp #$00
+	beq DecayNext
+	sec
+	sbc #$01
+	ora VelocityTemp
+	sta P0XVelocity,x
+DecayNext:
+	inx
+	cpx #$05
+	bne DoDecay
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
@@ -336,7 +424,7 @@ KernelWait:
 	sta VBLANK
 	
 	;; Assume scanline 35 once HMOVE happens.
-	lda #$23
+	lda #$19
 	sta ScanLine
 
 	;; go to next scanline and thwack HMOVE, to commit the X motion changes.
@@ -414,33 +502,6 @@ PFReady:
 	sta CTRLPF
 
 	;;
-	;; top border
-	;;
-topborder:
-	ldx #$07		; 8 lines of
-	lda #$F0		; a solid 40 pixels of playfield line
-	ldy #$FF		;
-	sta PF0			; slam it in
-	sty PF1			;
-	sty PF2			;
-toploop:
-	sta WSYNC		; loop around waiting for next line
-	dex
-	bne toploop
-	lda ScanLine
-	adc #$07
-	
-	;;
-	;; prime Playfield registers to make main pf loop simpler.
-	;;
-primepf:
-	lda #$10		; nice simple left/right border
-	sta PF0			;
-	lda #$00		; empty middle
-	sta PF1			;
-	sta PF2			;
-
-	;;
 	;; the inner playfield loop
 	;; 
 vfield:	ldx #$1F		; Place SP over ENABL
@@ -516,34 +577,21 @@ vfdone:	lda PlayerY1		; get player 1's Y coord
 	beq vnot1		; and slam it to GRP0
 vdot1:	lda PLAYER,X		; load next graphic line
 vnot1:	sta GRP1		; slam it into GRP1
+	lda PF0_0,Y
+	sta PF0
 	lda PF1_0,Y		; now we have some time to slam PF1 into place
 	sta PF1			;
 	lda PF2_0,Y		; and PF2.
 	sta PF2			;
 	inc ScanLine		; increment to next scanline
 	lda ScanLine		; get current scanline
-	eor #$D8		; are we done?
+	eor #$E6		; are we done?
 	bne vfield		; if not, loop around.
 
 	;;
 	;; go to next line, to keep things clean.
 	;;
 	sta WSYNC
-
-	;;
-	;;  do the bottom border
-	;;
-BottomBorder:
-	ldx #$06		; border is 7 pixels deep
-	lda #$F0		; left/right border is solid
-	ldy #$FF		; middle is solid
-	sta PF0			; and slam into the playfield registers
-	sty PF1			;
-	sty PF2			;
-botloop:
-	sta WSYNC		; wait for next line
-	dex			; decrement loop counter
-	bne botloop		; if we're down to 0 from 7, go on.
 
 	;;
 	;; Bottom of the visible kernel
@@ -556,117 +604,13 @@ KernelCleanup:
 	;;
 	ldx TempStackPtr
 	txs
-	sta WSYNC		; blank line padding
+	ldx #$08
+wloop	sta WSYNC
+	dex
+	bpl
+	wloop
 	lda #$00
-	
-OverScan:
-	sta WSYNC		; next line
-	lda #2			; turn back on the vertical blank
-	sta VBLANK		;
-	lda #22			; and wait 22*64 cycles
-	lda #$00
-	sta HMCLR
-	sta TIM64T
-
-	;;
-	;; the motion code
-	;;
-
-	;;
-	;; first, the joystick stuff, which adds velocity to a given
-	;; direction
-	;;
-	
-Motion:	ldx #$00		; Start with player 0
-	lda SWCHA		; get player switches
-
-CheckRight:
-	asl
-	bcs CheckLeft
-	tay
-	lda P0XVelocity,x
-	cmp #$F8
-	beq RightMaxVelocity
-	clc
-	adc #$01
-	ora #$F0
-	sta P0XVelocity,x
-RightMaxVelocity:	
-	tya
-CheckLeft:
-	asl
-	bcs CheckDown
-	tay
-	lda P0XVelocity,x
-	cmp #$08
-	beq LeftMaxVelocity
-	clc
-	adc #$01
-	and #$0F
-	sta P0XVelocity,x
-LeftMaxVelocity:	
-	tya
-CheckDown:
-	asl
-	bcs CheckUp
-	tay
-	lda P0YVelocity,x
-	cmp #$08
-	beq DownMaxVelocity
-	clc
-	adc #$01
-	and #$0F
-	sta P0YVelocity,x
-DownMaxVelocity:	
-	tya
-CheckUp:
-	asl
-	bcs StickEnd
-	tay
-	lda P0YVelocity,x
-	cmp #$F8
-	beq UpMaxVelocity
-	clc
-	adc #$01
-	ora #$F0
-	sta P0YVelocity,x	
-UpMaxVelocity:	
-	tya
-StickEnd:
-	inx
-	cpx #$02
-	bne CheckRight
-
-VelocityDecay:
-	lda SWCHA		; Read the sticks again.
-	cmp #$FF
-	bne OSWait		; Do not do velocity decay if joystick isn't still
-
-	ldx #$00		; Start with player 0 X, end with 1 Y (4 values)
-
-DoDecay:
-	lda P0XVelocity,x
-	and #$F0
-	sta VelocityTemp
-	lda P0XVelocity,x
-	and #$0F
-	cmp #$00
-	beq DecayNext
-	sec
-	sbc #$01
-	ora VelocityTemp
-	sta P0XVelocity,x
-DecayNext:
-	inx
-	cpx #$05
-	bne DoDecay
-	
-
-	
-OSWait: sta WSYNC		; next scanline
-	lda INTIM		; check timer
-	bne OSWait		; if we're not done, we loop aroujnd.
-	
+		
 	jmp MainLoop		; and go back to the top!
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -702,13 +646,32 @@ Colors:
 ;;; ;; Playfield data
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+PF0_0
+	.byte $00
+	.byte $00
+	.byte $00
+	.byte $00
+
+	.byte $F0
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	.byte $10
+	
 PF1_0
 	.byte $00
 	.byte $00
 	.byte $00
 	.byte $00
-	.byte $00
-	
+
+	.byte $FF
 	.byte $00
 	.byte $00
 	.byte $00
@@ -726,8 +689,8 @@ PF2_0
 	.byte $00
 	.byte $00
 	.byte $00
-	.byte $00
-	
+
+	.byte $FF
 	.byte $80
 	.byte $80
 	.byte $00
