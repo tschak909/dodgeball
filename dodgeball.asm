@@ -86,6 +86,7 @@ VerticalSync:
 	inc ColorCycle
 ColorSkip:
 	inc Frame		; otherwise increment the frame counter.
+	sta HMCLR
 	sta WSYNC
 	sta WSYNC
 	lda #$00
@@ -168,6 +169,9 @@ SOCloop:
 DoMotion:
 	ldx #$00		; start with player 0
 DoHorizMotion:
+	lda P0XVelocity,x
+	cmp #$00
+	beq DoVertMotion	; no horiz velocity == no horiz collision checks.
 	lda #$00		; clear velocity flip variable
 	sta VelocityFlip	;
 	lda #$80		; Assume waiting until proven not.
@@ -197,11 +201,16 @@ HorizLeft:
 	lda CXP0FB,x		; Check P0/P1 to PF collision.
 	bpl ExHorizMotion	; If we haven't collided with anything, execute the motion.
 HorizCollided:
-	lda Temp		; Grab the hmove velocity
-	sec			; and do a 2's compliment not
-	eor #$FF		; to flip it, so the velocity is now the opposite
-	adc #$00		; direction...
-	sta Temp		; and store it.
+	lda P0XVelocity,x
+	and #$F0
+	cmp #$F0
+	bne HorizCollided1
+	lda #$10
+	sta Temp
+	bvc ExHorizMotion
+HorizCollided1:
+	lda #$F0
+	sta Temp
 ExHorizMotion:
 	lda Temp		; Bring back velocity.
 	sta HMP0,X		; and plop it into the right HMOVE register (lower 4 bits ignored)
@@ -233,6 +242,12 @@ VertUp:
 	lda CXP0FB,X		; Check collision register for P0/P1->PF
 	bpl DoVertUp		; If we haven't collided, do normal vertical up
 VertUpCollided:
+	lda P0YVelocity,x
+	sec
+	eor VelocityFlip
+	adc #$00
+	cmp #$00
+	beq DoNextPlayer
 	lda PlayerY0,X		; get player's current Y
 	sec			; clear carry for add
 	adc VelocityTemp	; add the requested Y amount
@@ -263,6 +278,12 @@ VertDown:
 	lda CXP0FB,X
 	bpl DoVertDown
 VertDownCollided:
+	lda P0YVelocity,x
+	sec
+	eor VelocityFlip
+	adc #$00
+	cmp #$00
+	beq DoNextPlayer
 	lda PlayerY0,X		; get player's current Y
 	sec			; set carry for subtract
 	sbc VelocityTemp	; subtract the requested Y amount
@@ -276,96 +297,97 @@ DoVertDown:
 DoNextPlayer:
 	inx			; increment player value
 	cpx #$02		; if player=2 we're done, fall through.
-	beq Motion	; otherwise, go back and handle the next player.
+	beq PrepScoreForDisplay	; otherwise, go back and handle the next player.
 	jmp DoHorizMotion	; (we kinda went over the branch, ugh.)
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Motion code
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-Motion:	ldx #$00		; Start with player 0
-	lda SWCHA		; get player switches
+;; Motion:        ldx #$00                ; Start with player 0
+;;        lda SWCHA               ; get player switches
 
-CheckRight:
-	asl
-	bcs CheckLeft
-	tay
-	lda P0XVelocity,x
-	cmp #$F8
-	beq RightMaxVelocity
-	clc
-	adc #$01
-	ora #$F0
-	sta P0XVelocity,x
-RightMaxVelocity:	
-	tya
-CheckLeft:
-	asl
-	bcs CheckDown
-	tay
-	lda P0XVelocity,x
-	cmp #$08
-	beq LeftMaxVelocity
-	clc
-	adc #$01
-	and #$0F
-	sta P0XVelocity,x
-LeftMaxVelocity:	
-	tya
-CheckDown:
-	asl
-	bcs CheckUp
-	tay
-	lda P0YVelocity,x
-	cmp #$08
-	beq DownMaxVelocity
-	clc
-	adc #$01
-	and #$0F
-	sta P0YVelocity,x
-DownMaxVelocity:	
-	tya
-CheckUp:
-	asl
-	bcs StickEnd
-	tay
-	lda P0YVelocity,x
-	cmp #$F8
-	beq UpMaxVelocity
-	clc
-	adc #$01
-	ora #$F0
-	sta P0YVelocity,x	
-UpMaxVelocity:	
-	tya
-StickEnd:
-	inx
-	cpx #$02
-	bne CheckRight
+;; CheckRight:
+;;        asl
+;;        bcs CheckLeft
+;;        tay
+;;        lda P0XVelocity,x
+;;        cmp #$F8
+;;        beq RightMaxVelocity
+;;        clc
+;;        adc #$01
+;;        ora #$F0
+;;        sta P0XVelocity,x
+;; RightMaxVelocity:
+;;        tya
+;; CheckLeft:
+;;        asl
+;;        bcs CheckDown
+;;        tay
+;;        lda P0XVelocity,x
+;;        cmp #$08
+;;        beq LeftMaxVelocity
+;;        clc
+;;        adc #$01
+;;        and #$0F
+;;        sta P0XVelocity,x
+;; LeftMaxVelocity:
+;;        tya
+;; CheckDown:
+;;        asl
+;;        bcs CheckUp
+;;        tay
+;;        lda P0YVelocity,x
+;;        cmp #$08
+;;        beq DownMaxVelocity
+;;        clc
+;;        adc #$01
+;;        and #$0F
+;;        sta P0YVelocity,x
+;; DownMaxVelocity:
+;;        tya
+;; CheckUp:
+;;        asl
+;;        bcs StickEnd
+;;        tay
+;;        lda P0YVelocity,x
+;;        cmp #$F8
+;;        beq UpMaxVelocity
+;;        clc
+;;        adc #$01
+;;        ora #$F0
+;;        sta P0YVelocity,x
+;; UpMaxVelocity:
+;;        tya
+;; StickEnd:
+;;        inx
+;;        cpx #$02
+;;        bne CheckRight
 
-VelocityDecay:
-	lda SWCHA		; Read the sticks again.
-	cmp #$FF
-	bne PrepScoreForDisplay		; Do not do velocity decay if joystick isn't still
+;; VelocityDecay:
+;;        lda SWCHA               ; Read the sticks again.
+;;        cmp #$FF
+;;        bne PrepScoreForDisplay         ; Do not do velocity decay if joystick isn't still
 
-	ldx #$00		; Start with player 0 X, end with 1 Y (4 values)
+;;        ldx #$00                ; Start with player 0 X, end with 1 Y (4 values)
 
-DoDecay:
-	lda P0XVelocity,x
-	and #$F0
-	sta VelocityTemp
-	lda P0XVelocity,x
-	and #$0F
-	cmp #$00
-	beq DecayNext
-	sec
-	sbc #$01
-	ora VelocityTemp
-	sta P0XVelocity,x
-DecayNext:
-	inx
-	cpx #$05
-	bne DoDecay
+;; DoDecay:
+;;        lda P0XVelocity,x
+;;        and #$F0
+;;        sta VelocityTemp
+;;        lda P0XVelocity,x
+;;        and #$0F
+;;        cmp #$00
+;;        beq DecayNext
+;;        sec
+;;        sbc #$01
+;;        ora VelocityTemp
+;;        sta P0XVelocity,x
+;; DecayNext:
+;;        inx
+;;        cpx #$05
+;;        bne DoDecay
+
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
@@ -828,7 +850,7 @@ DigitGfx:
         .byte %01000100
 
 	;; upper nibble is delay, lower nibble is HMOVE delta.
-HORIZ_VELOCITY:	.byte $00,$17,$17,$17,$13,$13,$10,$10,$20
+HORIZ_VELOCITY:	.byte $00,$1F,$1F,$1F,$13,$13,$10,$10,$20
 VERT_VELOCITY:	.byte $00,$17,$17,$17,$13,$13,$10,$10,$20
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
