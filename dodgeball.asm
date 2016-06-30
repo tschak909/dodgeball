@@ -51,22 +51,24 @@ ColdStart:
 	;;
 	;; all this is temporary
 	;;
-	lda #$32
-	sta PlayerY0
-	sta RESM0
-	lda #$50
-	sta PlayerY1
-	lda #$80
-	sta BallY0
-	lda #$90
-	sta BallY1
-	lda #$A0
-	sta BallY2
-	sta RESBL
-	sta RESM1
-	lda #$10
-	sta NUSIZ0
-	sta NUSIZ1
+	;; lda #$32
+	;; sta PlayerY0
+	;; sta RESM0
+	;; lda #$50
+	;; sta PlayerY1
+	;; lda #$80
+	;; sta BallY0
+	;; lda #$90
+	;; sta BallY1
+	;; lda #$A0
+	;; sta BallY2
+	;; sta RESBL
+	;; sta RESM1
+	;; lda #$10
+	;; sta NUSIZ0
+	;; sta NUSIZ1
+
+	jsr InitialPosition
 
 MainLoop:
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -112,20 +114,9 @@ ProcessSwitches:
 	lsr
 	bcs NoNuGam	      ; go to no nu game if not pressed.
 	;;  Reset/Start pressed.
-	;;  Reset player positions.
-	ldx #$87
-	stx PlayerY0
-	stx PlayerY1
-	nop
-	nop
-	stx RESP0		; Put us somewhere close to left of screen.
+	jsr InitialPosition
 	ldx #$FF
 	stx GameState
-	;; Please for the love of god, get rid of this
-	;; it's 33 wasted bytes just to position an
-	;; object. argh.
-	SLEEP 33
-	stx RESP1		; Put P1 on the right side of screen.
 NoNuGam:
 	lsr			; get select value
 	bcs SetTia		; select not pressed.
@@ -649,7 +640,21 @@ wloop	sta WSYNC
 Sleep12:
 	rts			; this takes 6 cycles, the jsr takes 6 cycles.
 
-
+InitialPosition:
+	;; 
+	;;  Reset player positions.
+	;;
+	sta WSYNC
+	SLEEP 11
+	ldx #$87
+	stx PlayerY0
+	stx PlayerY1
+	nop
+	nop
+	stx RESP0		; Put us somewhere close to left of screen.
+	SLEEP 38
+	stx RESP1		; Put P1 on the right side of screen.
+	rts			; and return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Tables
