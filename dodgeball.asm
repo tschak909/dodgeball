@@ -121,6 +121,9 @@ ProcessSwitches:
 	stx RESP0		; Put us somewhere close to left of screen.
 	ldx #$FF
 	stx GameState
+	;; Please for the love of god, get rid of this
+	;; it's 33 wasted bytes just to position an
+	;; object. argh.
 	SLEEP 33
 	stx RESP1		; Put P1 on the right side of screen.
 NoNuGam:
@@ -205,11 +208,11 @@ HorizCollided:
 	and #$F0
 	cmp #$F0
 	bne HorizCollided1
-	lda #$10
+	lda #$50
 	sta Temp
 	bvc ExHorizMotion
 HorizCollided1:
-	lda #$F0
+	lda #$A0
 	sta Temp
 ExHorizMotion:
 	lda Temp		; Bring back velocity.
@@ -250,7 +253,7 @@ VertUpCollided:
 	beq DoNextPlayer
 	lda PlayerY0,X		; get player's current Y
 	sec			; clear carry for add
-	adc VelocityTemp	; add the requested Y amount
+	adc #$06		; add the requested Y amount
 	sta PlayerY0,X		; store it back in player's current Y
 	jmp DoNextPlayer	; do the next player.	
 DoVertUp:	
@@ -286,7 +289,7 @@ VertDownCollided:
 	beq DoNextPlayer
 	lda PlayerY0,X		; get player's current Y
 	sec			; set carry for subtract
-	sbc VelocityTemp	; subtract the requested Y amount
+	sbc #$06		; subtract the requested Y amount
 	sta PlayerY0,X		; store it back in player's current Y
 	jmp DoNextPlayer	; do the next player.	
 DoVertDown:
@@ -297,96 +300,101 @@ DoVertDown:
 DoNextPlayer:
 	inx			; increment player value
 	cpx #$02		; if player=2 we're done, fall through.
-	beq PrepScoreForDisplay	; otherwise, go back and handle the next player.
+	beq Motion		; otherwise, go back and handle the next player.
 	jmp DoHorizMotion	; (we kinda went over the branch, ugh.)
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Motion code
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; Motion:        ldx #$00                ; Start with player 0
-;;        lda SWCHA               ; get player switches
+Motion:
+       ldx #$00                ; Start with player 0
+       lda SWCHA               ; get player switches
 
-;; CheckRight:
-;;        asl
-;;        bcs CheckLeft
-;;        tay
-;;        lda P0XVelocity,x
-;;        cmp #$F8
-;;        beq RightMaxVelocity
-;;        clc
-;;        adc #$01
-;;        ora #$F0
-;;        sta P0XVelocity,x
-;; RightMaxVelocity:
-;;        tya
-;; CheckLeft:
-;;        asl
-;;        bcs CheckDown
-;;        tay
-;;        lda P0XVelocity,x
-;;        cmp #$08
-;;        beq LeftMaxVelocity
-;;        clc
-;;        adc #$01
-;;        and #$0F
-;;        sta P0XVelocity,x
-;; LeftMaxVelocity:
-;;        tya
-;; CheckDown:
-;;        asl
-;;        bcs CheckUp
-;;        tay
-;;        lda P0YVelocity,x
-;;        cmp #$08
-;;        beq DownMaxVelocity
-;;        clc
-;;        adc #$01
-;;        and #$0F
-;;        sta P0YVelocity,x
-;; DownMaxVelocity:
-;;        tya
-;; CheckUp:
-;;        asl
-;;        bcs StickEnd
-;;        tay
-;;        lda P0YVelocity,x
-;;        cmp #$F8
-;;        beq UpMaxVelocity
-;;        clc
-;;        adc #$01
-;;        ora #$F0
-;;        sta P0YVelocity,x
-;; UpMaxVelocity:
-;;        tya
-;; StickEnd:
-;;        inx
-;;        cpx #$02
-;;        bne CheckRight
+CheckRight:
+       asl
+       bcs CheckLeft
+       tay
+       lda P0XVelocity,x
+       cmp #$F8
+       beq RightMaxVelocity
+       clc
+       adc #$01
+       ora #$F0
+       sta P0XVelocity,x
+RightMaxVelocity:
+       tya
+CheckLeft:
+       asl
+       bcs CheckDown
+       tay
+       lda P0XVelocity,x
+       cmp #$08
+       beq LeftMaxVelocity
+       clc
+       adc #$01
+       and #$0F
+       sta P0XVelocity,x
+LeftMaxVelocity:
+       tya
+CheckDown:
+       asl
+       bcs CheckUp
+       tay
+       lda P0YVelocity,x
+       cmp #$08
+       beq DownMaxVelocity
+       clc
+       adc #$01
+       and #$0F
+       sta P0YVelocity,x
+DownMaxVelocity:
+       tya
+CheckUp:
+       asl
+       bcs StickEnd
+       tay
+       lda P0YVelocity,x
+       cmp #$F8
+       beq UpMaxVelocity
+       clc
+       adc #$01
+       ora #$F0
+       sta P0YVelocity,x
+UpMaxVelocity:
+       tya
+StickEnd:
+       inx
+       cpx #$02
+       bne CheckRight
 
-;; VelocityDecay:
-;;        lda SWCHA               ; Read the sticks again.
-;;        cmp #$FF
-;;        bne PrepScoreForDisplay         ; Do not do velocity decay if joystick isn't still
+VelocityDecay:
+       lda SWCHA               ; Read the sticks again.
+       cmp #$FF
+       bne PrepScoreForDisplay         ; Do not do velocity decay if joystick isn't still
 
-;;        ldx #$00                ; Start with player 0 X, end with 1 Y (4 values)
+       ldx #$00                ; Start with player 0 X, end with 1 Y (4 values)
 
-;; DoDecay:
-;;        lda P0XVelocity,x
-;;        and #$F0
-;;        sta VelocityTemp
-;;        lda P0XVelocity,x
-;;        and #$0F
-;;        cmp #$00
-;;        beq DecayNext
-;;        sec
-;;        sbc #$01
-;;        ora VelocityTemp
-;;        sta P0XVelocity,x
-;; DecayNext:
-;;        inx
-;;        cpx #$05
-;;        bne DoDecay
+DoDecay:
+       lda P0XVelocity,x
+       and #$F0
+       sta VelocityTemp
+       lda P0XVelocity,x
+       and #$0F
+       cmp #$00
+       beq DecayNext
+       sec
+       sbc #$01
+	ora VelocityTemp
+	cmp #$F0
+	bne StoreDecay
+	lda #$00
+StoreDecay:	
+       sta P0XVelocity,x
+DecayNext:
+       inx
+       cpx #$05
+       bne DoDecay
 
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
