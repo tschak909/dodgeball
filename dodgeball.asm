@@ -12,6 +12,7 @@
 	ORG $80
 
 Frame:		ds 1	        ; Frame counter.
+GameTimer:	ds 1		; Game Timer
 ScanLine:	ds 1		; scanline counter
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
@@ -34,6 +35,10 @@ P0XVelocity:	ds 1		; P0 X Velocity
 P1XVelocity:	ds 1		; P0 Y Velocity
 P0YVelocity:	ds 1		; P1 X Velocity
 P1YVelocity:	ds 1		; P1 Y Velocity
+P0XDirection:	ds 1		; P0 X Direction (Bit 7 Left, Bit 6 Right)
+P1XDirection:	ds 1		; P1 X Direction
+P0YDirection:	ds 1		; P0 Y Direction (Bit 7 Up, Bit 6 Down)
+P1YDirection:	ds 1		; P1 Y Direction
 P0XIsWaiting:	ds 1		; P0 X is Waiting (BIT 7)
 P1XIsWaiting:	ds 1		; P1 X is Waiting (Bit 7)
 P0YIsWaiting:	ds 1		; P0 Y is Waiting (BIT 7)
@@ -44,7 +49,7 @@ WaitingTemp:	ds 1		; Waiting index temp between frames.
 
 	
 	SEG CODE
-	ORG $F800
+	ORG $F000
 
 ColdStart:
 	CLEAN_START
@@ -294,14 +299,85 @@ DoNextPlayer:
 	beq Motion		; otherwise, go back and handle the next player.
 	jmp DoHorizMotion	; (we kinda went over the branch, ugh.)
 
+;;; ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ; ;; Motion code
+;;; ; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+Motion:		ldx #$00	; Start with player 0
+	lda SWCHA		; get player switches
+
+CheckRight:
+	asl
+	bcs CheckLeft
+	tay
+	lda P0XVelocity,x
+	cmp #$F8
+	beq RightMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0XVelocity,x
+RightMaxVelocity:
+	tya
+CheckLeft:
+	asl
+	bcs CheckDown
+	tay
+	lda P0XVelocity,x
+	cmp #$08
+	beq LeftMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0XVelocity,x
+LeftMaxVelocity:
+	tya
+CheckDown:
+	asl
+	bcs CheckUp
+	tay
+	lda P0YVelocity,x
+	cmp #$08
+	beq DownMaxVelocity
+	clc
+	adc #$01
+	and #$0F
+	sta P0YVelocity,x
+DownMaxVelocity:
+	tya
+CheckUp:
+	asl
+	bcs StickEnd
+	tay
+	lda P0YVelocity,x
+	cmp #$F8
+	beq UpMaxVelocity
+	clc
+	adc #$01
+	ora #$F0
+	sta P0YVelocity,x
+UpMaxVelocity:
+	tya
+StickEnd:
+	inx
+	cpx #$02
+	bne CheckRight
+
+VelocityDecay:
+	;; lda SWCHA		; Read the sticks again.
+	;; cmp #$FF
+	;; bne PrepScoreForDisplay	; Do not do velocity decay if joystick isn't still
+
+	ldx #$00		; Start with player 0 X, end with 1 Y (4 values)
+
+	
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	
 PrepScoreForDisplay:
-	inc Timer		; increment frame timer
+	inc Timer		; Increment frame timer.
 	bne PSFDskip
 	inc Score		; for now, we increment score.
 
