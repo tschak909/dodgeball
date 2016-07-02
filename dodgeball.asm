@@ -12,7 +12,6 @@
 	ORG $80
 
 Frame:		ds 1	        ; Frame counter.
-GameTimer:	ds 1		; Game Timer
 ScanLine:	ds 1		; scanline counter
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
@@ -49,7 +48,7 @@ WaitingTemp:	ds 1		; Waiting index temp between frames.
 
 	
 	SEG CODE
-	ORG $F000
+	ORG $F800
 
 ColdStart:
 	CLEAN_START
@@ -90,7 +89,13 @@ VerticalSync:
 	lda Frame		; (8 bit frame counter)
 	and #$3F		; (we only want to act every 64 frames)
 	bne ColorSkip		; don't update color cycle if not @64 frames
-	inc ColorCycle
+
+Every128Frames:	
+	inc ColorCycle		; Increment the color cycle counter.
+	bit GameState		; check gamestate
+	bpl ColorSkip		; if we're not playing, don't increment timer.
+	inc GameState		; otherwise increment the game timer.
+
 ColorSkip:
 	inc Frame		; otherwise increment the frame counter.
 	sta HMCLR
@@ -120,7 +125,7 @@ ProcessSwitches:
 	bcs NoNuGam	      ; go to no nu game if not pressed.
 	;;  Reset/Start pressed.
 	jsr InitialPosition
-	ldx #$FF
+	ldx #$80		; Put 128 into gamestate
 	stx GameState
 NoNuGam:
 	lsr			; get select value
