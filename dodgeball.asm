@@ -24,6 +24,8 @@
 
 Frame:		ds 1	        ; Frame counter.
 ScanLine:	ds 1		; scanline counter
+PlayerX0:	ds 1		; Player X0
+PlayerX1:	ds 1		; Player X1
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
 BallY0:		ds 1		; ball y0
@@ -40,7 +42,6 @@ TempStackPtr:	ds 1		; Temporary Stack Pointer
 GameState:	ds 1		; store game state (BIT tested)
 Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
-
 	
 	SEG CODE
 	ORG $F800
@@ -137,7 +138,7 @@ SOCloop:
 	dey
 	dex
 	bpl SOCloop		; branch if not end of table.
-
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -168,7 +169,7 @@ PSFDloop:
 	sta DigitTens,x		; take the result and store into the tens.
 	dex			; next score line to calculate
 	bpl PSFDloop		; and loop back around.
-
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; The kernel for the visible screen.
 ;;; ;; at this point, the vblank timer is running out
@@ -181,11 +182,10 @@ PSFDloop:
 ;;; ;; * Top border (PF0, PF1, PF2)
 ;;; ;; * Playfield (PF1, PF2, P0, P1, M0, M1, BL)
 ;;; ;; * Bottom Border (PF0, PF1, PF2)
-;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-Kernel:
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;Kernel:
 	lda #$00
 	sta CXCLR
+
 KernelWait:	
 	;; wait for timer to run out
 	lda INTIM
@@ -387,25 +387,49 @@ wloop	sta WSYNC
 ;;; ;; Ancilliary subroutines
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+	;; 
+	;; sleep for 12 cycles
+	;; 
 Sleep12:
 	rts			; this takes 6 cycles, the jsr takes 6 cycles.
 
-InitialPosition:
-	;; 
-	;;  Reset player positions.
 	;;
-	sta WSYNC
-	SLEEP 11
-	ldx #$87
-	stx PlayerY0
-	stx PlayerY1
-	nop
-	nop
-	stx RESP0		; Put us somewhere close to left of screen.
-	SLEEP 38
-	stx RESP1		; Put P1 on the right side of screen.
+	;; set Initial player position
+	;; 
+InitialPosition:
+	lda #$0E
+	ldx #$00
+	jsr PosObject
+	lda #$8A
+	ldx #$01
+	jsr PosObject
+	lda #$87
+	sta PlayerY0
+	sta PlayerY1
 	rts			; and return.
-	
+
+	;;
+	;;  Position object's X coordinate.
+	;;  A register = X position (0-159 for P0, P1, 1-160 for M0,M1,BL)
+	;;  X Register = Object to position (0,1 = P0/P1, 2,3,4 = M0, M1, BL)
+	;;
+	;;  Yeah, ok, this routine is everywhere, and I didn't feel like reinventing it.
+	;;  
+PosObject:
+        sec
+        sta WSYNC
+DivideLoop
+        sbc #15        ; 2  2 - each time thru this loop takes 5 cycles, which is 
+        bcs DivideLoop ; 2  4 - the same amount of time it takes to draw 15 pixels
+        eor #7         ; 2  6 - The EOR & ASL statements convert the remainder
+        asl            ; 2  8 - of position/15 to the value needed to fine tune
+        asl            ; 2 10 - the X position
+        asl            ; 2 12
+        asl            ; 2 14
+        sta.wx HMP0,X  ; 5 19 - store fine tuning of X
+        sta RESP0,X    ; 4 23 - set coarse X position of object
+        rts            ; 6 29
+
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Tables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
