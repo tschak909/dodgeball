@@ -40,22 +40,6 @@ TempStackPtr:	ds 1		; Temporary Stack Pointer
 GameState:	ds 1		; store game state (BIT tested)
 Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
-JoystickStates:	ds 1		; Joystick states.
-P0XVelocity:	ds 1		; P0 X Velocity
-P1XVelocity:	ds 1		; P0 Y Velocity
-P0YVelocity:	ds 1		; P1 X Velocity
-P1YVelocity:	ds 1		; P1 Y Velocity
-P0XDirection:	ds 1		; P0 X Direction (Bit 7 Left, Bit 6 Right)
-P1XDirection:	ds 1		; P1 X Direction
-P0YDirection:	ds 1		; P0 Y Direction (Bit 7 Up, Bit 6 Down)
-P1YDirection:	ds 1		; P1 Y Direction
-P0XIsWaiting:	ds 1		; P0 X is Waiting (BIT 7)
-P1XIsWaiting:	ds 1		; P1 X is Waiting (Bit 7)
-P0YIsWaiting:	ds 1		; P0 Y is Waiting (BIT 7)
-P1YIsWaiting:	ds 1		; P1 Y is Waiting (BIT 7)
-VelocityTemp:	ds 1		; used for velocity unpacking.
-VelocityFlip:	ds 1		; used to flip velocity values.
-WaitingTemp:	ds 1		; Waiting index temp between frames.
 
 	
 	SEG CODE
@@ -63,26 +47,6 @@ WaitingTemp:	ds 1		; Waiting index temp between frames.
 
 ColdStart:
 	CLEAN_START
-	;;
-	;; all this is temporary
-	;;
-	;; lda #$32
-	;; sta PlayerY0
-	;; sta RESM0
-	;; lda #$50
-	;; sta PlayerY1
-	;; lda #$80
-	;; sta BallY0
-	;; lda #$90
-	;; sta BallY1
-	;; lda #$A0
-	;; sta BallY2
-	;; sta RESBL
-	;; sta RESM1
-	;; lda #$10
-	;; sta NUSIZ0
-	;; sta NUSIZ1
-
 	jsr InitialPosition
 
 MainLoop:
@@ -174,116 +138,6 @@ SOCloop:
 	dex
 	bpl SOCloop		; branch if not end of table.
 
-;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ;; motion/velocity code for players.
-;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-	ldx #$00		; Start with player 0
-
-	;;
-	;; Horizontal Motion
-	;;
-	
-HorizVelocityParse:
-	lda P0XVelocity,x	; grab X velocity index
-	cmp #$00		; is it 0? (going left)
-	beq VertVelocityParse	; yes, skip to vertical motion.
-	cmp #$F0		; is it F0? (going right)
-	beq VertVelocityParse	; yes, skip to vertical motion.
-	lda #$80		; assume waiting, until we're proven not.
-	sta P0XIsWaiting,x	;
-	ldy P0XVelocity,x	; Get velocity index
-	bpl HorizVelocityLeft	; Go left if we're not (Fx)
-HorizVelocityRight:
-	lda #$FF		; flip bits for a two's compliment subtraction, later
-	sta VelocityFlip	;
-	tya
-	and #$0F		; mask off twop bits, getting rid of sign.
-	tay
-HorizVelocityLeft:
-	lda HORIZ_VELOCITY,y	; now, get the actual velocity value.
-	and #$0F		; mask off HMOVE componoent, leaving delay.
-	sta VelocityTemp	; Store temporarily in velocity temp.
-	lda Frame		; get current frame
-	and VelocityTemp	; mask against requested velocity delay.
-	bne VertVelocityParse	; if we do not need to move, go to vertical.
-	lda #$00		; we're not waiting, clear the waiting flag.
-	sta P0XIsWaiting,x	; and store it.
-	lda HORIZ_VELOCITY,y	; grab horizontal velocity again.
-	sec			; clear carry to prepare for...
-	eor VelocityFlip	; a two's compliment bit flip.
-	adc #00			; ....yeah.
-	sta Temp		; store into temp.
-PerformHorizMotion:
-	lda Temp		; bring back temp
-	sta HMP0,X		; slam it into Horizontal motion vector.
-
-	;;
-	;; Vertical Motion
-	;;
-
-VertVelocityParse:
-	lda #$00		; clear the velocity flip
-	sta VelocityFlip	;
-	lda #$80		; set Y is waiting until proven otherwise.
-	sta P0YIsWaiting,x	;
-	ldy P0YVelocity,x	; Get the requested player Y velocity index.
-	bpl VertVelocityDown	; Go down if Y velocity index isn't (Fx)
-VertVelocityUp:
-	tya			; do a little register gymnastics
-	and #$0f		; to get rid of the sign.
-	tay			; and back again.
-	lda VERT_VELOCITY,y	; get actual velocity/delay value from index.
-	and #$0F		; mask of vertical delta value.
-	sta VelocityTemp	; and store temporarily into temp
-	lda Frame		; get current frame
-	and VelocityTemp	; and mask against it.
-	bne DoNextPlayer	; if we're not ready, go to bottom and loop to next player.
-	lda #$00		; clear P0 Y is waiting, because we're not.
-	sta P0YIsWaiting,y	; ...
-	lda VERT_VELOCITY,y	; get the requested Y movement amount.
-	lsr			; ...
-	lsr			; shift it over 4 bits, to get requested
-	lsr			; movement amount...
-	lsr			; ...
-	sta Temp		; and store it temporarily.
-PerformVertUp:
-	lda PlayerY0,X		; get current Y pos
-	sec			; set carry to prepare for subtract
-	sbc Temp		; subtract velocity delta we calculated.
-	sta PlayerY0,X		; and store it back.
-	bvc DoNextPlayer	; and go to next player.
-VertVelocityDown:
-	lda VERT_VELOCITY,y	; get requested vertical velocity index
-	and #$0f		; mask off the delta, leaving delay.
-	sta VelocityTemp	; store away.
-	lda Frame		; get current frame
-	and VelocityTemp	; and mask against it.
-	bne DoNextPlayer	; if we're waiting, just move along to the next player.
-	lda #$00		; otherwise, clear waiting.
-	sta P0YIsWaiting,y	; because we're not waiting.
-	lda VERT_VELOCITY,y	; get actual velocity nibbles for this player's Y
-	lsr			; ...
-	lsr			; shift it over 4 bits, to get to the good stuff.
-	lsr			; for the # of units to move down
-	lsr			; ...
-	sta Temp
-PerformVertDown:
-	lda PlayerY0,x		; get Player x's Y coordinate
-	clc			; clear carry for add
-	adc Temp		; add the player delta
-	sta PlayerY0,x		; and store it back.
-
-	;;
-	;; Do next player
-	;;
-
-DoNextPlayer:	
-	inx			; increment X (which contains current player)
-	cpx #$02		; are we done?
-	beq PrepScoreForDisplay	; We're done, go calculate store.
-	jmp HorizVelocityParse	; go back.
-	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -758,10 +612,6 @@ DigitGfx:
         .byte %01000100
         .byte %01000100
 
-	;; upper nibble is delay, lower nibble is HMOVE delta.
-HORIZ_VELOCITY:	.byte $00,$1F,$1F,$1F,$13,$13,$10,$10,$20
-VERT_VELOCITY:	.byte $00,$17,$17,$17,$13,$13,$10,$10,$20
-	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Function to check for free space at end of cart.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
