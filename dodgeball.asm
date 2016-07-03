@@ -158,14 +158,14 @@ MotionPlayer:
 MotionPDelay:
 	lda P0Velocity,x
 	cmp #$00
-	beq PrepScoreForDisplay
+	beq MotionNext
 	and #$0F
 	sec
 	sbc #$01
 	sta Temp
 	lda Frame
 	and Temp
-	bne PrepScoreForDisplay
+	bne MotionNext
 
 MotionPDirection:
 	lda P0Velocity,x
