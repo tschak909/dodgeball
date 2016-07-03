@@ -28,9 +28,12 @@ PlayerX0:	ds 1		; Player X0
 PlayerX1:	ds 1		; Player X1
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
+BallX0:		ds 1		; Ball X0
+BallX1:		ds 1		; Ball X1
+BallX2:		ds 1		; Ball X2
 BallY0:		ds 1		; ball y0
-BallY1:		ds 1		; missile y0
-BallY2:		ds 1		; missile y1
+BallY1:		ds 1		; Ball y1
+BallY2:		ds 1		; Ball y2
 Score:		ds 1		; Score
 Timer:		ds 1		; Timer
 DigitOnes:	ds 2		; Player 0 and 1 digit graphics
@@ -42,6 +45,8 @@ TempStackPtr:	ds 1		; Temporary Stack Pointer
 GameState:	ds 1		; store game state (BIT tested)
 Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
+P0Velocity:	ds 1		; P0 Velocity
+P1Velocity:	ds 1		; P1 Velocity
 	
 	SEG CODE
 	ORG $F800
@@ -138,7 +143,95 @@ SOCloop:
 	dey
 	dex
 	bpl SOCloop		; branch if not end of table.
-	
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Yet another thwack at motion. No really, this
+;;; ;; is getting really old. I feel like I'm Bill Murray
+;;; ;; at this point. Actually, wait, maybe I'm schizophrenic
+;;; ;; and I am both Bill Murray, and Stephen Tobolowsky?
+;;; ;; Don't do drugs, kids...
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+MotionPlayer:
+	ldx #$00
+
+MotionPDelay:
+	lda P0Velocity,x
+	cmp #$00
+	beq PrepScoreForDisplay
+	and #$0F
+	sec
+	sbc #$01
+	sta Temp
+	lda Frame
+	and Temp
+	bne PrepScoreForDisplay
+
+MotionPDirection:
+	lda P0Velocity,x
+	eor #$FF
+
+CheckPDirections:
+	asl
+	bcs CheckLeft
+DoRight:
+	tay
+	lda PlayerX0,x
+	clc
+	adc #$01
+	cmp #$9F
+	bne DoRight1
+	lda #$00
+DoRight1:
+	sta PlayerX0,x
+	jsr PosObject
+	tya
+CheckLeft:	
+	asl
+	bcs CheckDown
+DoLeft:
+	tay
+	lda PlayerX0,x
+	sec
+	sbc #$01
+	cmp #$00
+	bne DoLeft1
+	lda #$9F
+DoLeft1:
+	sta PlayerX0,x
+	jsr PosObject
+	tya
+CheckDown:
+	asl
+	bcs CheckUp
+DoDown:
+	tay
+	lda PlayerY0,x
+	clc
+	adc #$01
+	bne DoDown1
+	lda #$00
+DoDown1:
+	sta PlayerY0,x
+	tya
+CheckUp:
+	asl
+	bcs MotionNext
+DoUp:
+	tay
+	lda PlayerY0,x
+	sec
+	sbc #$01
+	bne DoUp1
+	lda #$00
+DoUp1:
+	sta PlayerY0,x
+	tya
+MotionNext:
+	inx
+	cpx #$02
+	bne MotionPDelay
+
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
