@@ -28,6 +28,10 @@ PlayerX0:	ds 1		; Player X0
 PlayerX1:	ds 1		; Player X1
 PlayerY0:	ds 1		; Player Y0
 PlayerY1:	ds 1		; Player Y1
+PlayerX0S:	ds 1		; Player X0 Saved
+PlayerX1S:	ds 1		; Player X1 Saved 
+PlayerY0S:	ds 1		; Player Y0 Saved
+PlayerY1S:	ds 1		; Player Y1 Saved
 BallX0:		ds 1		; Ball X0
 BallX1:		ds 1		; Ball X1
 BallX2:		ds 1		; Ball X2
@@ -152,9 +156,34 @@ SOCloop:
 ;;; ;; Don't do drugs, kids...
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+	;;
+	;;  Persist last known good coordinates if not colliding
+	;;  with anything.
+	;;
+
+	ldx #$00
+
+PersistLNG:
+	lda CXP0FB,x
+	bmi MotionPlayer
+	lda PlayerX0,x
+	sta PlayerX0S,x
+	lda PlayerY0,x
+	sta PlayerY0S,x
+PersistNext:
+	inx
+	cpx #$02
+	bne PersistLNG
+
+	;;
+	;;  start with first player.
+	;; 
 MotionPlayer:
 	ldx #$00
 
+	;;
+	;; Apply the appropriate pre-motion delay in frames
+	;; 
 MotionPDelay:
 	lda P0Velocity,x
 	cmp #$00
@@ -167,10 +196,18 @@ MotionPDelay:
 	and Temp
 	bne MotionNext
 
+	;;
+	;; Next grab the requested direction(s),
+	;; and flip them for easy carry set shifting.
+	;; 
 MotionPDirection:
 	lda P0Velocity,x
 	eor #$FF
 
+	;;
+	;; Iterate through each direction, and applying the appropriate
+	;; coordinate change
+	;; 
 CheckPDirections:
 	asl
 	bcs CheckLeft
@@ -184,7 +221,6 @@ DoRight:
 	lda #$00
 DoRight1:
 	sta PlayerX0,x
-	jsr PosObject
 	tya
 CheckLeft:	
 	asl
@@ -199,7 +235,6 @@ DoLeft:
 	lda #$9F
 DoLeft1:
 	sta PlayerX0,x
-	jsr PosObject
 	tya
 CheckDown:
 	asl
@@ -227,11 +262,46 @@ DoUp:
 DoUp1:
 	sta PlayerY0,x
 	tya
+
+	;;
+	;; Finally, move on to the next player.
+	;; 
 MotionNext:
 	inx
 	cpx #$02
 	bne MotionPDelay
 
+	;;
+	;; Check each player for collision, if it has occurred, reset player
+	;; coordintes back to last known good coordinates.
+	;;
+
+	ldx #$00
+	
+PlayerColCheck:
+	lda CXP0FB,x
+	bpl NextColCheck
+	lda PlayerX0S,x
+	sta PlayerX0,x
+	lda PlayerY0S,x
+	sta PlayerY0,x
+NextColCheck:
+	inx
+	cpx #$02
+	bne PlayerColCheck
+
+	;;
+	;; Apply X motion vectors.
+	;; 
+	ldx #$00
+	
+ApplyMotion:	
+	lda PlayerX0,x
+	jsr PosObject
+	inx
+	cpx #$02
+	bne ApplyMotion
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -491,11 +561,9 @@ Sleep12:
 	;; 
 InitialPosition:
 	lda #$0E
-	ldx #$00
-	jsr PosObject
+	sta PlayerX0
 	lda #$8A
-	ldx #$01
-	jsr PosObject
+	sta PlayerX1
 	lda #$87
 	sta PlayerY0
 	sta PlayerY1
