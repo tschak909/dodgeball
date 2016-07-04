@@ -189,6 +189,8 @@ MotionPDelay:
 	cmp #$00
 	beq MotionNext
 	and #$0F
+	cmp #$00
+	beq MotionPDirection
 	sec
 	sbc #$01
 	sta Temp
@@ -243,7 +245,7 @@ DoDown:
 	tay
 	lda PlayerY0,x
 	clc
-	adc #$01
+	adc #$02
 	bne DoDown1
 	lda #$00
 DoDown1:
@@ -256,7 +258,7 @@ DoUp:
 	tay
 	lda PlayerY0,x
 	sec
-	sbc #$01
+	sbc #$02
 	bne DoUp1
 	lda #$00
 DoUp1:
@@ -301,6 +303,51 @@ ApplyMotion:
 	inx
 	cpx #$02
 	bne ApplyMotion
+
+	;;
+	;; Player Joystick movement
+	;;
+PlayerJS:
+	ldx #$00		; start with player 0
+	lda SWCHA		; check joysticks.
+NextJS:
+	ldy #$01
+	sty P0Velocity,x
+	asl
+	bcs CheckJSLeft
+DoJSRight:
+	tay
+	lda #$80
+	sta P0Velocity,x
+	tya
+CheckJSLeft:
+	asl
+	bcs CheckJSDown
+DoJSLeft:
+	tay
+	lda #$40
+	sta P0Velocity,x
+	tya
+CheckJSDown:
+	asl
+	bcs CheckJSUp
+DoJSDown:
+	tay
+	lda #$20
+	sta P0Velocity,x
+	tya
+CheckJSUp:
+	asl
+	bcs JSNextPlayer
+DoJSUp:
+	tay
+	lda #$10
+	sta P0Velocity,x
+	tya
+JSNextPlayer:
+	inx
+	cpx #$02
+	bne NextJS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
