@@ -26,18 +26,24 @@ Frame:		ds 1	        ; Frame counter.
 ScanLine:	ds 1		; scanline counter
 PlayerX0:	ds 1		; Player X0
 PlayerX1:	ds 1		; Player X1
-PlayerY0:	ds 1		; Player Y0
-PlayerY1:	ds 1		; Player Y1
-PlayerX0S:	ds 1		; Player X0 Saved
-PlayerX1S:	ds 1		; Player X1 Saved 
-PlayerY0S:	ds 1		; Player Y0 Saved
-PlayerY1S:	ds 1		; Player Y1 Saved
 BallX0:		ds 1		; Ball X0
 BallX1:		ds 1		; Ball X1
 BallX2:		ds 1		; Ball X2
+PlayerY0:	ds 1		; Player Y0
+PlayerY1:	ds 1		; Player Y1
 BallY0:		ds 1		; ball y0
 BallY1:		ds 1		; Ball y1
 BallY2:		ds 1		; Ball y2
+PlayerX0S:	ds 1		; Player X0 Saved
+PlayerX1S:	ds 1		; Player X1 Saved
+BallX0S:	ds 1		; Ball X0 Saved
+BallX1S:	ds 1		; Ball X1 Saved
+BallX2S:	ds 1		; Ball X2 Saved
+PlayerY0S:	ds 1		; Player Y0 Saved
+PlayerY1S:	ds 1		; Player Y1 Saved
+BallY0S:	ds 1		; Ball Y0 Saved
+BallY1S:	ds 1		; Ball Y1 Saved
+BallY2S:	ds 1		; Ball Y2 Saved
 Score:		ds 1		; Score
 Timer:		ds 1		; Timer
 DigitOnes:	ds 2		; Player 0 and 1 digit graphics
@@ -51,6 +57,9 @@ Temp2:		ds 1		; another temp value
 ColorCycle:	ds 1		; Color cycling temp value (attract mode)
 P0Velocity:	ds 1		; P0 Velocity
 P1Velocity:	ds 1		; P1 Velocity
+B0Velocity:	ds 1		; Ball 0 bearing.
+B1Velocity:	ds 1		; Ball 1 bearing.
+B2Velocity:	ds 1		; Ball 2 Bearing.
 	
 	SEG CODE
 	ORG $F800
@@ -58,6 +67,7 @@ P1Velocity:	ds 1		; P1 Velocity
 ColdStart:
 	CLEAN_START
 	jsr InitialPosition
+	jsr DebugValues
 
 MainLoop:
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -180,7 +190,8 @@ PersistNext:
 	;; 
 MotionPlayer:
 	ldx #$00
-
+	stx VDELBL
+	
 	;;
 	;; Apply the appropriate pre-motion delay in frames
 	;; 
@@ -269,8 +280,17 @@ DoUp1:
 	;; Finally, move on to the next player.
 	;; 
 MotionNext:
+	cpx #$04
+	bne MotionNext1
+	lda PlayerY0,x
+	clc
+	adc #$01
+	lsr
+	bcs MotionNext1
+	sta VDELBL
+MotionNext1:
 	inx
-	cpx #$02
+	cpx #$06
 	bne MotionPDelay
 
 	;;
@@ -301,9 +321,9 @@ ApplyMotion:
 	lda PlayerX0,x
 	jsr PosObject
 	inx
-	cpx #$02
+	cpx #$06
 	bne ApplyMotion
-
+	
 	;;
 	;; Player Joystick movement
 	;;
@@ -348,7 +368,12 @@ JSNextPlayer:
 	inx
 	cpx #$02
 	bne NextJS
-	
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Convert ball bearing into motion changes.
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Calculate digit graphic offsets from score variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -557,13 +582,13 @@ vfdone:	lda PlayerY1		; get player 1's Y coord
 	lda #$00		; write 0's
 	beq vnot1		; and slam it to GRP0
 vdot1:	lda PLAYER,X		; load next graphic line
-vnot1:	sta GRP1		; slam it into GRP1
+vnot1:	sta GRP1		; slam it into GRP1	
 	lda PF0_0,Y
 	sta PF0
 	lda PF1_0,Y		; now we have some time to slam PF1 into place
 	sta PF1			;
 	lda PF2_0,Y		; and PF2.
-	sta PF2			;
+	sta PF2			;	
 	inc ScanLine		; increment to next scanline
 	lda ScanLine		; get current scanline
 	eor #$E6		; are we done?
@@ -614,6 +639,9 @@ InitialPosition:
 	lda #$87
 	sta PlayerY0
 	sta PlayerY1
+	lda #$10
+	sta NUSIZ0
+	sta NUSIZ1
 	rts			; and return.
 
 	;;
@@ -638,6 +666,17 @@ DivideLoop
         sta RESP0,X    ; 4 23 - set coarse X position of object
         rts            ; 6 29
 
+	;;
+	;; Set values for debugging
+	;;
+DebugValues:
+	lda #$50
+	sta B0Velocity
+	sta B1Velocity
+	sta B2Velocity
+	rts
+	
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Tables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -844,6 +883,27 @@ DigitGfx:
         .byte %01000100
         .byte %01000100
 
+	;; RLDU	RLDU
+	;; 0001	0010	02
+	;; 1001	0110	06
+	;; 1000	0100	04
+	;; 1010	0101	05
+	;; 0010	0001	01
+	;; 0110	1001	09
+	;; 0100	1000	08
+	;; 0101	1010	0A
+		
+BALL_OPPOSITE_TABLE:
+	.byte $02
+	.byte $06
+	.byte $04
+	.byte $05
+	.byte $01
+	.byte $08
+	.byte $0a
+	
+	
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Function to check for free space at end of cart.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
