@@ -34,8 +34,7 @@ VBLANK_WAIT_TIME	EQU	43 ; TIM64T based vblank waiting time.
 
 BINvar:		ds 1
 BCDvar:		ds 1
-NU1:		ds 1
-NU2:		ds 1
+JMove:		ds 2
 NU3:		ds 1
 NU4:		ds 1
 CLOCK:		ds 1
@@ -45,13 +44,13 @@ SelDbnce:	ds 1
 NU5:		ds 1
 Vtemp:		ds 1
 FwdTimer:	ds 4
-NU6:		ds 1
-NU7:		ds 1
-NU8:		ds 1
-NU9:		ds 1
+LastTimer:	ds 1
+LastTimer2:	ds 1
+LastTurn:	ds 1
+LastTurn2:	ds 1
 DIRECTN:	ds 5
-MisLife:	ds 2
-BounceCount:	ds 2
+MisLife:	ds 3
+BounceCount:	ds 3
 MxPFcount:	ds 3
 NU10:		ds 1
 SCORE:		ds 2
@@ -87,7 +86,7 @@ GameTimer:	ds 1
 NUMG0:		ds 1
 NUMG1:		ds 1
 SCROFF:		ds 4
-COLcount:	ds 2
+COLcount:	ds 3
 	
 
 	
@@ -110,6 +109,7 @@ MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 	JSR JOYSTK		; Check Joystick Switches
 	JSR COLIS		; Check Collision Registers
 	JSR SETMOT		; Setup Motion of Objects
+	JSR SETPLR		; Rotate players (This will be simplified.)
 	JSR SCROT		; Calculate Score Offsets
 	;;
 	;; Kernel Code
@@ -389,9 +389,9 @@ ResetField:
 	LDA #134
 	STA PlayerY0
 	BIT GAMVAR
+	STA RESP1
 	BMI CS_RTS
 	STA PlayerY1
-	STA RESP1
 	LDA #$08
 	STA DIRECTN+1
 	LDA #$20
@@ -451,14 +451,68 @@ LDcol0	LDA ColorTbl,Y
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 JOYSTK:
+	LDA #$FF
+	STA JMove
+	LDA SWCHA
+	EOR #$FF
+	LDX #$00
+JSNxt:	LDY #$EE
+	STY JMove
+JRight:	CMP #$80
+	BNE JLeft
+	LDY #$00
+	JMP JLDone
+JLeft:	CMP #$40
+	BNE JDown
+	LDY #$08
+	JMP JLDone
+JDown:	CMP #$20
+	BNE JUp
+	LDY #$0C
+	JMP JLDone
+JUp:	CMP #$10
+	BNE JRUp
+	LDY #$04
+	JMP JLDone
+JRUp:	CMP #$90
+	BNE JRDown
+	LDY #$02
+	JMP JLDone
+JRDown:	CMP #$A0
+	BNE JLUp
+	LDY #$0D
+	JMP JLDone
+JLUp:	CMP #$50
+	BNE JLDown
+	LDY #$05
+	JMP JLDone
+JLDown:	CMP #$60
+	BNE JLNone
+	LDY #$0A
+	JMP JLDone
+JLNone:	LDY #$00
+	STY JMove
+JLDone: STY DIRECTN,X
+	LDY JMove
+	STY MVadjA,X
+	STY MVadjB,X
+	ASL
+	ASL
+	ASL
+	ASL
+	INX
+	CPX #$02
+	BNE JSNxt
 	RTS
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Check for collisions
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-COLIS:	LDX #$01
+COLIS:	LDX #$02
 COLnext:
+	CPX #$02
+	BEQ COLnoHit
 	LDA CXM0P,X
 	BPL COLnoHit
 	;;
@@ -480,6 +534,7 @@ COLDET:	INC DIRECTN,X
 	LDA #$FF
 	STA RESMP0
 	STA RESMP1
+	STA RESBL
 	LDA #$00
 	STA AUDV0,X
 	STA MisLife
@@ -526,11 +581,13 @@ Bump180:
 COLMPFdone:
 	INC MxPFcount,x
 	;;
-COLTCK:	LDA CXP0FB,X
+COLTCK: CPX #$02
+	BEQ COLjmp
+	LDA CXP0FB,X
 	BMI COLTW
 	LDA CXPPMM
 	BPL COLTCLR
-COLTW:  NOP
+COLTW:  BCC COLTnk1
 COLTCLR:
 	LDA #$03
 	STA COLcount,x
@@ -544,7 +601,7 @@ COLTnk1:
 	BNE COLreverse
 	;;
 COLbonk:
-	INC DIRECTN,X
+	INC DIRECTN,X		
 COLreverse:
 	LDA DIRECTN,X
 	CLC
@@ -554,6 +611,8 @@ COLPD:	DEX
 	BMI COLrts
 	JMP COLnext
 COLrts:	RTS
+COLjmp: DEX
+	JMP COLnext
 	;;
 BumpTank:
 	AND #$0F
@@ -576,7 +635,9 @@ BumpTank:
 SETMOT:	NOP
 	LDA #$20
 	STA XoffBase
-	LDX #$03
+	LDX #$04
+	JSR STPM
+	DEX
 	JSR STPM
 	DEX
 	JSR STPM
@@ -639,6 +700,10 @@ SCROT0:	LDA SCORE,X
 	BPL SCROT0
 	RTS
 
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Additional motion code.
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+	
 STPM:	INC MPace,X
 	LDA DIRECTN,X
 	AND #$0F
@@ -687,6 +752,40 @@ PhNoWrap:
 	BCS PhNoVD
 	STA VDELP0,X
 PhNoVD:	RTS 
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Setup player data
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+SETPLR:	LDA #$01
+	AND CLOCK
+	TAX
+	TXA
+	EOR #$0E
+	TAX
+	LDY #$00		; always one shape
+	TYA
+	ASL
+	ASL
+	ASL
+	CMP #$3F
+	CLC
+	BMI ROTnoFlip
+	SEC
+	EOR #$47
+ROTnoFlip:
+	TAY
+ROTnext:
+	LDA (SHAPES),Y
+	STA HIRES,X
+	BCC ROTinc
+	DEY
+	DEY
+ROTinc:	INY
+	DEX
+	DEX
+	BPL ROTnext
+	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Clear RAM, mod $0100
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -708,7 +807,7 @@ PhNoVD:	RTS
 ClearMem
 	LDA  #$00
 ClrLoop	INX  
-	STA  $A2,X
+	STA  SCORE+1,X
 	BNE  ClrLoop  ;Continue until X rolls over.
 	RTS  
 
@@ -753,12 +852,16 @@ IFnoPlane:
 	STA LORES+5
 	;;
 	LDA PLFPNT,X
+	NOP
 	STA RESP0
+	STA RESBL
 	STA LORES
 	LDA PLFPNT+4,X
 	STA LORES+2
 	LDA PLFPNT+8,X
 	STA LORES+4
+	LDA #$30
+	STA BallY2
 	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -930,8 +1033,8 @@ NUMBERS	.byte $0E ; |    XXX | $F5C5   Leading zero is not drawn
 
 ; Addresses for Sprite Graphics
 
-SPRLO   .BYTE  #<PlayerShape
-SPRHI   .BYTE  #>PlayerShape
+SPRLO   .BYTE  #<PlayerShape, #<PlayerShape, #<PlayerShape
+SPRHI   .BYTE  #>PlayerShape, #>PlayerShape, #>PlayerShape
 
 
 ; Playfield address data.  Kernal timing requires that
