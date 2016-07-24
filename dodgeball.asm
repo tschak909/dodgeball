@@ -12,7 +12,8 @@
 ;;; Author: Thomas Cherryhomes
 ;;; 	<thom.cherryhomes@gmail.com>
 
-	
+;;; Contains code from Combat (CX-2601) by
+;;; Joe Decuir and Larry Wagner
 
 	PROCESSOR 6502
 
@@ -99,7 +100,11 @@ COLcount:	ds 3
 
 ColdStart:
 	CLEAN_START		; defined in macro.h
-
+	LDA #$10
+	STA SWCHB+1
+	STA GameOn
+	JSR ClrGam
+	
 MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 	;;
 	;; VBLANK Logic
@@ -326,7 +331,7 @@ CONSWT: LDA SWCHB
 	STA GameOn
 	LDA #$80
 	STA GameTimer
-	LDX #$E6
+	LDX #$E4
 	JSR ClearMem
 	BEQ ResetField
 NoNewGM	LDY #$02
@@ -358,7 +363,7 @@ SelDown	BIT SelDbnce
 	BMI CS_RTS
 	;;
 	INC BINvar
-ClrGam	LDX #$DF
+ClrGam	LDX #$DE
 ClrGRST	JSR ClearMem
 	LDA #$FF
 	STA SelDbnce
@@ -367,7 +372,7 @@ ClrGRST	JSR ClearMem
 	STA GAMVAR
 	EOR #$FF
 	BNE SelGO
-	LDX #$DD
+	LDX #$DA
 	BNE ClrGRST
 	;;
 SelGO	LDA BCDvar
@@ -431,7 +436,7 @@ LDmult:	ASL
 	LDA SWCHB
 	AND #$08		; Check Color/BW switch
 	BNE LDcolor		; not flipped? do color.
-	LDY #$10
+	LDY #$04
 	LDX #$0F
 LDcolor STX TEMP
 	LDX #$03
@@ -451,7 +456,10 @@ LDcol0	LDA ColorTbl,Y
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 JOYSTK:
-	LDA #$FF
+	BIT GameOn
+	BMI JS1
+	RTS
+JS1:	LDA #$FF
 	STA JMove
 	LDA SWCHA
 	EOR #$FF
@@ -461,50 +469,69 @@ JSNxt:	LDY #$EE
 JRight:	CMP #$80
 	BNE JLeft
 	LDY #$00
-	JMP JLDone
+	JMP JSDone
 JLeft:	CMP #$40
 	BNE JDown
 	LDY #$08
-	JMP JLDone
+	JMP JSDone
 JDown:	CMP #$20
 	BNE JUp
 	LDY #$0C
-	JMP JLDone
+	JMP JSDone
 JUp:	CMP #$10
 	BNE JRUp
 	LDY #$04
-	JMP JLDone
+	JMP JSDone
 JRUp:	CMP #$90
 	BNE JRDown
 	LDY #$02
-	JMP JLDone
+	JMP JSDone
 JRDown:	CMP #$A0
 	BNE JLUp
 	LDY #$0D
-	JMP JLDone
+	JMP JSDone
 JLUp:	CMP #$50
 	BNE JLDown
 	LDY #$05
-	JMP JLDone
+	JMP JSDone
 JLDown:	CMP #$60
 	BNE JLNone
 	LDY #$0A
-	JMP JLDone
+	JMP JSDone
 JLNone:	LDY #$00
 	STY JMove
-JLDone: STY DIRECTN,X
+JSDone:
+	STA TEMP
+	LDA INPT4,X
+	BMI JSOnly
+JSMsl:	
+	SEC
+	LDA PlayerY0,X
+	SBC #$06
+	STA BallY0,X
+	LDA DIRECTN,X
+	STA DIRECTN+2,X
+	LDA #$02
+	STA RESM0,X
+	LDA #$00
+	STA MxPFcount,X
+	LDA TEMP
+	JMP JSInc
+JSOnly: STY DIRECTN,X
 	LDY JMove
 	STY MVadjA,X
-	STY MVadjB,X
+JSInc:	
 	ASL
 	ASL
 	ASL
 	ASL
 	INX
 	CPX #$02
-	BNE JSNxt
+	BNE JSNxt0
 	RTS
 
+JSNxt0:	JMP JSNxt
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Check for collisions
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -856,9 +883,9 @@ IFnoPlane:
 	STA RESP0
 	STA RESBL
 	STA LORES
-	LDA PLFPNT+4,X
+	LDA PLFPNT+3,X
 	STA LORES+2
-	LDA PLFPNT+8,X
+	LDA PLFPNT+6,X
 	STA LORES+4
 	LDA #$30
 	STA BallY2
@@ -868,18 +895,13 @@ IFnoPlane:
 ;;; ;; Tables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-WIDTHS	.BYTE  $10 ,$10  ;1 vs. 1
-	.BYTE  $01 ,$01  ;2 vs. 2
-	.BYTE  $00 ,$03  ;1 vs. 3
-	.BYTE  $27 ,$03  ;Bomber vs. 3
+WIDTHS:	
+	.BYTE  $10 ,$10  ;1 vs. 1
 
-ColorTbl
-	byte $EA ,$3C ,$82 ,$44      ; 00 = Regular Tanks
-       .byte $32 ,$2C ,$8A ,$DA      ; 01 = Tank Pong
-       .byte $80 ,$9C ,$DA ,$3A      ; 10 = Jets
-       .byte $64 ,$A8 ,$DA ,$4A      ; 11 = Biplanes
+ColorTbl:	
+	byte $80 ,$9C ,$DA ,$3A      ; 00 = Regular Tanks
        .byte $08 ,$04 ,$00 ,$0E      ; special B&W
-
+	
 PlayerShape:
 	.byte $00
 	.byte $00
@@ -890,19 +912,22 @@ PlayerShape:
 	.byte $00
 	.byte $00
 
-PF0_0  .byte $F0 ; |XXXX    | $F779
-       .byte $10 ; |   X    | $F77A
-       .byte $10 ; |   X    | $F77B
-       .byte $10 ; |   X    | $F77C
-       .byte $10 ; |   X    | $F77D
-       .byte $10 ; |   X    | $F77E
-       .byte $10 ; |   X    | $F77F
-       .byte $10 ; |   X    | $F780
-       .byte $10 ; |   X    | $F781
-       .byte $10 ; |   X    | $F782
+
+	align 100
+PF0_0:
+	.byte $F0 ; |XXXX    | $F779
+	.byte $10 ; |   X    | $F77A
+	.byte $10 ; |   X    | $F77B
+	.byte $10 ; |   X    | $F77C
+	.byte $10 ; |   X    | $F77D
+	.byte $10 ; |   X    | $F77E
+	.byte $10 ; |   X    | $F77F
+	.byte $10 ; |   X    | $F780
+	.byte $10 ; |   X    | $F781
+	.byte $10 ; |   X    | $F782
        .byte $10 ; |   X    | $F783
-       .byte $10 ; |   X    | $F784
-PF1_0  .byte $FF ; |XXXXXXXX| $F785
+	.byte $10 ; |   X    | $F784
+PF1_0:	.byte $FF ; |XXXXXXXX| $F785
        .byte $00 ; |        | $F786
        .byte $00 ; |        | $F787
        .byte $00 ; |        | $F788
@@ -913,8 +938,9 @@ PF1_0  .byte $FF ; |XXXXXXXX| $F785
        .byte $60 ; | XX     | $F78D
        .byte $20 ; |  X     | $F78E
        .byte $20 ; |  X     | $F78F
-       .byte $23 ; |  X   XX| $F790
-PF2_0  .byte $FF ; |XXXXXXXX| $F791
+	.byte $23 ; |  X   XX| $F790
+PF2_0:
+	.byte $FF ; |XXXXXXXX| $F791
        .byte $80 ; |X       | $F792
        .byte $80 ; |X       | $F793
        .byte $00 ; |        | $F794
@@ -925,12 +951,13 @@ PF2_0  .byte $FF ; |XXXXXXXX| $F791
        .byte $00 ; |        | $F799
        .byte $00 ; |        | $F79A
        .byte $00 ; |        | $F79B
-       .byte $00 ; |        | $F79C
-PF1_1  .byte $FF ; |XXXXXXXX| $F79D
-PF0_3  .byte $00 ; |        | $F79E
+	.byte $00 ; |        | $F79C
+PF1_1:
+	.byte $FF ; |XXXXXXXX| $F79D
+PF0_3:	.byte $00 ; |        | $F79E
        .byte $00 ; |        | $F79F
-       .byte $00 ; |        | $F7A0
-PF1_3  .byte $00 ; |        | $F7A1
+	.byte $00 ; |        | $F7A0
+PF1_3:	.byte $00 ; |        | $F7A1
        .byte $00 ; |        | $F7A2
        .byte $00 ; |        | $F7A3
        .byte $00 ; |        | $F7A4
@@ -942,8 +969,8 @@ PF1_3  .byte $00 ; |        | $F7A1
        .byte $07 ; |     XXX| $F7AA
        .byte $1F ; |   XXXXX| $F7AB
        .byte $3F ; |  XXXXXX| $F7AC
-       .byte $7F ; | XXXXXXX| $F7AD
-PF1_2  .byte $FF ; |XXXXXXXX| $F7AE
+	.byte $7F ; | XXXXXXX| $F7AD
+PF1_2:	.byte $FF ; |XXXXXXXX| $F7AE
        .byte $00 ; |        | $F7AF
        .byte $00 ; |        | $F7B0
        .byte $00 ; |        | $F7B1
@@ -954,8 +981,8 @@ PF1_2  .byte $FF ; |XXXXXXXX| $F7AE
        .byte $00 ; |        | $F7B6
        .byte $60 ; | XX     | $F7B7
        .byte $20 ; |  X     | $F7B8
-       .byte $21 ; |  X    X| $F7B9
-PF2_2  .byte $FF ; |XXXXXXXX| $F7BA
+	.byte $21 ; |  X    X| $F7B9
+PF2_2:	.byte $FF ; |XXXXXXXX| $F7BA
        .byte $00 ; |        | $F7BB
        .byte $00 ; |        | $F7BC
        .byte $00 ; |        | $F7BD
@@ -968,10 +995,9 @@ PF2_2  .byte $FF ; |XXXXXXXX| $F7BA
        .byte $00 ; |        | $F7C4
        .byte $07 ; |     XXX| $F7C5
 	
-	
 ;	Patterns for numbers
 ;
-NUMBERS	.byte $0E ; |    XXX | $F5C5   Leading zero is not drawn
+NUMBERS:	.byte $0E ; |    XXX | $F5C5   Leading zero is not drawn
 	.byte $0A ; |    X X | $F5C6   because it's never used.
 	.byte $0A ; |    X X | $F5C7
 	.byte $0A ; |    X X | $F5C8
@@ -1044,40 +1070,17 @@ SPRHI   .BYTE  #>PlayerShape, #>PlayerShape, #>PlayerShape
 	;        Complex   ,    None 
 	;        Simple    ,   Clouds
 PLFPNT	.BYTE  #<(PF0_0-4) ,#<(PF0_0-4)
-	.BYTE  #<(PF0_0-4) ,#<(PF0_3-4)   ;PF0
+	.BYTE  #<(PF0_0-4)   ;PF0
 	.BYTE  #<(PF1_0-4) ,#<(PF1_1-4)
-	.BYTE  #<(PF1_2-4) ,#<(PF1_3-4)   ;PF1
+	.BYTE  #<(PF1_2-4) ;PF1
 	.BYTE  #<(PF2_0-4) ,#<(PF1_1-4)
-	.BYTE  #<(PF2_2-4) ,#<(PF1_3-4)   ;PF2
+	.BYTE  #<(PF2_2-4) ;PF2
 
 	
-VARMAP	.BYTE  $24 ;Game 1:  0010 0100  TANK
-	.BYTE  $28 ;Game 2:  0010 1000
-	.BYTE  $08 ;Game 3:  0000 1000
-	.BYTE  $20 ;Game 4:  0010 0000
-	.BYTE  $00 ;Game 5:  0000 0000
-	.BYTE  $48 ;Game 6:  0100 1000  TANK PONG
-	.BYTE  $40 ;Game 7:  0100 0000
-	.BYTE  $54 ;Game 8:  0101 0100
-	.BYTE  $58 ;Game 9:  0101 1000
-	.BYTE  $25 ;Game 10: 0010 0101  INVISIBLE TANK
-	.BYTE  $29 ;Game 11: 0010 1001
-	.BYTE  $49 ;Game 12: 0100 1001  INVISIBLE TANK-PONG
-	.BYTE  $55 ;Game 13: 0101 0101
-	.BYTE  $59 ;Game 14: 0101 1001
-	.BYTE  $A8 ;Game 15: 1010 1000  BIPLANE
-	.BYTE  $88 ;Game 16: 1000 1000
-	.BYTE  $98 ;Game 17: 1001 1000
-	.BYTE  $90 ;Game 18: 1001 0000
-	.BYTE  $A1 ;Game 19: 1010 0001
-	.BYTE  $83 ;Game 20: 1000 0011
-	.BYTE  $E8 ;Game 21: 1110 1000  JET FIGHTER
-	.BYTE  $C8 ;Game 22: 1100 1000
-	.BYTE  $E0 ;Game 23: 1110 0000
-	.BYTE  $C0 ;Game 24: 1100 0000
-	.BYTE  $E9 ;Game 25: 1110 1001
-	.BYTE  $E2 ;Game 26: 1110 0010
-	.BYTE  $C1 ;Game 27: 1100 0001
+VARMAP:
+	.BYTE $28
+	.BYTE $20
+	
 	;
 	; $FF to signify end of game variations.
 	;
