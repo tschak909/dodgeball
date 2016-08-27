@@ -35,6 +35,13 @@ OVERSCAN_WAIT_TIME = 27		; 22 overscan lines
 
 	SEG.U VARS
 	ORG $80
+
+	;; Bit 7 = Ice Dodgeball or Regular Dodgeball?
+GAMVAR:			ds 1	; Game Variation (0 indexed)
+GAMPFMODE:		ds 1	; Game PF mode
+TEMP:			ds 1	; temp variable.
+CYCLE:			ds 1	; Color cycle.
+GAMESTATE:		ds 1	; Game State (D7 = Game On/Off)
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Code Segment
@@ -75,14 +82,38 @@ VCNTRL:	LDA #$02		; D1 = 1
 
 VBLNK:  LDA #$02		; D1 = 1
 	STA VBLANK		; Start VBLANK
+	LDX GAMVAR		; Get Game Variation #
+	LDA VARTBL,X		; Get variation from table
+	STA GAMPFMODE		; And store it in Game PF mode
 	JSR SetTIA
 VBLANKWait:
 	LDA INTIM		; Poll the timer
 	BNE VBLANKWait		; and if not ready, loop back to wait.
 	RTS
 
-SetTIA:	LDA #$32
-	STA COLUBK
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Set TIA Registers
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+SetTIA:	LDX #$03		; X = current pos in color table
+	LDY #$03		; Y = Loop iterator
+	BIT GAMPFMODE		; Get game PF mode
+	BPL SetTIACheckBW	; Are we in ice dodgeball?
+	LDX #$07		; Ice Dodgeball.
+SetTIACheckBW:	
+	LDA SWCHB		; Get Game switches
+	AND #$08		; mask off the B/W switch
+	BNE SetTIAColorLoop	; if color, skip to loop
+SetBWBit:
+	TXA			; A = X
+	ORA #$08		; Turn on D3 to get B/W colors from table.
+	TAX			; X = A
+SetTIAColorLoop:
+	LDA COLRTBL,X
+	STA COLUP0,Y
+	DEX
+	DEY
+	BPL SetTIAColorLoop
 	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -114,6 +145,98 @@ OSCANWait:
 	LDA INTIM
 	BNE OSCANWait
 	RTS
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Graphics and Tables
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+	;;
+	;; Playfield Data
+	;;
+PF0_0:
+	.byte %11110000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %11110000       
+
+PF1_0:
+	.byte %11111111
+        .byte %00000000
+        .byte %00000000
+        .byte %00111000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %11000000
+        .byte %01000000
+        .byte %01000000
+        .byte %01000001
+        .byte %01000001
+        .byte %01000000
+        .byte %01000000
+        .byte %11000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00111000
+        .byte %00000000
+        .byte %00000000
+        .byte %11111111       
+
+PF2_0:
+        .byte %11111111
+        .byte %10000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00011100
+        .byte %00000100
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000100
+        .byte %00011100
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %10000000
+        .byte %11111111       
+	
+	;;
+	;; Game Variation Table
+	;;
+VARTBL:	.byte %00000000		; GAME 1 - Dodgeball
+	.byte %10000000		; GAME 2 - Ice Dodgeball
+	.byte %11111111		; End of Variation Table
+
+COLRTBL:
+	.byte $DA, $8A, $2C, $32 ; Regular Dodgeball
+	.byte $3A, $DA, $9C, $80 ; Ice Dodgeball
+	.byte $0E, $00, $04, $08 ; B/W Regular Dodgeball
+	.byte $0E, $00, $04, $08 ; B/W Ice Dodgeball
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
