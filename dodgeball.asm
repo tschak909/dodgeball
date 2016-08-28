@@ -62,6 +62,7 @@ PLAYERY1:		ds 1	; Player 1 Y
 
 ColdStart:
 	CLEAN_START		; defined in macro.h
+	JSR GameReset		; Call Game Reset after cold start.
 	
 MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 	JSR VBLNK		; Vertical Blank routines
@@ -153,6 +154,19 @@ PSLoop:
 	dex			; decrement X to do the P0 in the second pass
 	bpl PSLoop		; Only return if X < 0
 	rts			; if we're done? return.
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; GameReset - Reset players to initial pos
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+GameReset:
+	LDX #$03		; 4 entries in table
+GameResetPosLoop:	
+	LDA InitialPosTbl,X	; Get Next entry
+	STA PLAYERX0,x		; Set it.
+	DEX			; decrement loop counter
+	BPL GameResetPosLoop	; loop through past 0
+	RTS			; and return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Visible Screen Kernel
@@ -463,11 +477,21 @@ VARTBL:	.byte %00000000		; GAME 1 - Dodgeball
 	.byte %10000000		; GAME 2 - Ice Dodgeball
 	.byte %11111111		; End of Variation Table
 
+	;;
+	;; Color Table
+	;;
+	;; COLUP0, COLUP1, COLUPF, COLUBK
+	;; 
 COLRTBL:
 	.byte $DA, $8A, $2C, $32 ; Regular Dodgeball
 	.byte $3A, $DA, $9C, $80 ; Ice Dodgeball
 	.byte $0E, $00, $04, $08 ; B/W Regular Dodgeball
 	.byte $0E, $00, $04, $08 ; B/W Ice Dodgeball
+
+	;; Initial Position Table
+	;; Y1, Y0, X1, X0
+InitialPosTbl:
+	.byte $3F, $3F, $80, $20
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
