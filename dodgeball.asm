@@ -28,7 +28,10 @@
 VBLANK_WAIT_TIME = 43		; 40 (37+3) vertical sync/blank lines
 KERNEL_WAIT_TIME = 237		; 200 visible lines
 OVERSCAN_WAIT_TIME = 27		; 22 overscan lines
-	
+FIRST_ARENA_SCANLINE = 49	; First Arena Scanline
+KERNEL_SCANLINE_BIAS = 6	; scanline bias
+KERNEL_SCANLINE_MAX = 232	; Max kernel scanline (minus overscan)
+PLAYFIELD_HEIGHT = 91
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -36,21 +39,41 @@ OVERSCAN_WAIT_TIME = 27		; 22 overscan lines
 	SEG.U VARS
 	ORG $80
 
-	;; Bit 7 = Ice Dodgeball or Regular Dodgeball?
+	;; Bit 7 = Ice Dodgeball or Regular Dodgeball
+	
+	;; 
+	;; global variables/state
+	;; 
+SCANLINE:		ds 1	; temporarily stored scanline
+STOREDSTACKPTR:		ds 1	; Stored SP for kernel.
 GAMVAR:			ds 1	; Game Variation (0 indexed)
 GAMPFMODE:		ds 1	; Game PF mode
 TEMP:			ds 1	; temp variable.
 CYCLE:			ds 1	; Color cycle.
 GAMESTATE:		ds 1	; Game State (D7 = Game On/Off)
+
+	;;
+	;; score variables
+	;; 
 SCORE:			ds 2	; Two player scores (BCD)
 SCOREGFX:		ds 2	; Current Score graphics for a given scanline.
 DIGITONES:		ds 2	; Holder for ones digit for p1/p0
 DIGITTENS:		ds 2	; holder for tens digit for p1/p0
+
+	;;
+	;; player position variables
+	;; 
 PLAYERX0:		ds 1	; Player 0 X
 PLAYERX1:		ds 1	; Player 1 X
 PLAYERY0:		ds 1	; Player 0 Y
 PLAYERY1:		ds 1	; Player 1 Y
-
+BALLX0:			ds 1	; Ball 0 X (M0)
+BALLX1:			ds 1	; Ball 1 X (M1)
+BALLX2:			ds 1	; Ball 2 X (BL) Computer ball
+BALLY0:			ds 1	; Ball 0 Y (M0)
+BALLY1:			ds 1	; Ball 1 Y (M1)
+BALLY2:			ds 1	; Ball 2 Y (BL) Computer Ball
+		
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -62,6 +85,30 @@ PLAYERY1:		ds 1	; Player 1 Y
 
 ColdStart:
 	CLEAN_START		; defined in macro.h
+	
+	;;
+	;; Temp-o-rama, get rid of it ASAP
+	;;
+	
+	LDA #$40
+	STA BALLX0
+	STA BALLY0
+
+	LDA #$88
+	STA BALLX1
+	STA BALLY1
+
+	LDA #$AC
+	STA BALLX2
+	STA BALLY2
+
+	LDX #$04
+CSPOSX:	
+	LDA PLAYERX0,x
+	JSR PosObject
+	DEX
+	BPL CSPOSX
+
 	JSR GameReset		; Call Game Reset after cold start.
 	
 MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
@@ -91,43 +138,69 @@ VCNTRL:	LDA #$02		; D1 = 1
 ;;; ;; Vertical Blank Routines
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-VBLNK:  LDA #$02		; D1 = 1
+VBLNK:	SUBROUTINE
+	LDA #$02		; D1 = 1
 	STA VBLANK		; Start VBLANK
 	LDX GAMVAR		; Get Game Variation #
 	LDA VARTBL,X		; Get variation from table
 	STA GAMPFMODE		; And store it in Game PF mode
-	JSR SetTIA
+	JSR SetTIA		; Set TIA Registers
+	JSR PositionObjects	; And Position Objects
 	JSR PrepScore		; Prepare score for kernel display.
-VBLANKWait:
+	INC PLAYERY0
+	INC PLAYERY1
+.waitUntilDone:
 	LDA INTIM		; Poll the timer
-	BNE VBLANKWait		; and if not ready, loop back to wait.
-Sleep12:
+	BNE .waitUntilDone	; and if not ready, loop back to wait.
 	RTS
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Set TIA Registers
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-SetTIA:	LDX #$03		; X = current pos in color table
+SetTIA:	SUBROUTINE
+	LDA #$00
+	STA VDELP0
+	STA VDELP1
+	LDA #$10
+	STA NUSIZ0
+	STA NUSIZ1
+	LDX #$03		; X = current pos in color table
 	LDY #$03		; Y = Loop iterator
 	BIT GAMPFMODE		; Get game PF mode
-	BPL SetTIACheckBW	; Are we in ice dodgeball?
+	BPL .checkBW		; Are we in ice dodgeball?
 	LDX #$07		; Ice Dodgeball.
-SetTIACheckBW:	
+.checkBW:	
 	LDA SWCHB		; Get Game switches
 	AND #$08		; mask off the B/W switch
-	BNE SetTIAColorLoop	; if color, skip to loop
-SetBWBit:
+	BNE .setNextColor	; if color, skip to loop
+.setBW:
 	TXA			; A = X
 	ORA #$08		; Turn on D3 to get B/W colors from table.
 	TAX			; X = A
-SetTIAColorLoop:
-	LDA COLRTBL,X
-	STA COLUP0,Y
-	DEX
-	DEY
-	BPL SetTIAColorLoop
-	RTS
+.setNextColor:		
+	LDA COLRTBL,X		; Get next entry from color table
+	STA COLUP0,Y		; set it.
+	DEX			; decrement table index
+	DEY			; decrement register index
+	BPL .setNextColor	; loop around, until done
+	RTS			; then return.
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Position Objects
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+	;;
+	;; Do X positions
+	;; 
+PositionObjects: SUBROUTINE
+	LDX #$01		; For now, position P0 and P1
+.setXPOS:	
+	LDA PLAYERX0,x		; Load player position
+	JSR PosObject		; Call PosObject to set X pos
+	DEX			; Decrement loop counter
+	BPL .setXPOS		; Go back and loop if not done.
+	RTS			; otherwise, return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Prep score for kernel display
@@ -135,9 +208,9 @@ SetTIAColorLoop:
 ;;; ;; graphic offsets for each digit.
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-PrepScore:
+PrepScore: SUBROUTINE
 	ldx #$01		; Go through loop, twice for each score.
-PSLoop:
+.loop:
 	lda SCORE,x		; Get BCD score (first P1, then P0)
 	and #$0F		; Mask off the upper nybble
 	sta TEMP		; and store the result temporarily.
@@ -152,27 +225,32 @@ PSLoop:
 	adc TEMP		; and now 5
 	sta DIGITTENS,x		; Store the result into the tens spot for (P1, then P0)
 	dex			; decrement X to do the P0 in the second pass
-	bpl PSLoop		; Only return if X < 0
+	bpl .loop		; Only return if X < 0
 	rts			; if we're done? return.
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; GameReset - Reset players to initial pos
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-GameReset:
+GameReset: SUBROUTINE
 	LDX #$03		; 4 entries in table
-GameResetPosLoop:	
+.setPositions:	
 	LDA InitialPosTbl,X	; Get Next entry
 	STA PLAYERX0,x		; Set it.
 	DEX			; decrement loop counter
-	BPL GameResetPosLoop	; loop through past 0
+	BPL .setPositions	; loop through past 0
+	
 	RTS			; and return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Visible Screen Kernel
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-KERNEL: STA WSYNC
+	;;
+	;; after the WSYNC, we will be on Scanline 36
+	;; 
+KERNEL:	SUBROUTINE
+	STA WSYNC
 	LDA #$00
 	STA VBLANK
 	LDA #KERNEL_WAIT_TIME
@@ -185,10 +263,9 @@ KERNEL: STA WSYNC
 	;;
 	;; Score kernel
 	;;
-
 	ldx #$05	 ; 5 2LK lines (10 scanlines)
 	;; ------------------------------------------
-ScoreLoop:	
+.renderScore:	
 	ldy DIGITTENS		; 3	46	Load tens digit
 	lda DigitGFX,y		; 5	51	Load digit graphics for tens digit 
 	and #$F0		; 2	53	Mask off the top digit graphic
@@ -223,7 +300,7 @@ ScoreLoop:
 	jsr Sleep12		; 12	35	waste some cycles so we can update other side
 	dex			; 2	37	decrease loop counter
 	sta PF1			; 3	40	update right score (P1)
-	bne ScoreLoop		; 2	42	(3 43) if x != 0, then loop back
+	bne .renderScore	; 2	42	(3 43) if x != 0, then loop back
 	sta WSYNC		; 3 	45	wait for end of scanline
 	;; ----------------------------------------
 	stx PF1			; 3	3	x = 0 so this blanks the playfield for this line
@@ -232,49 +309,104 @@ ScoreLoop:
 	lda #$11		; 2	2	a = 0
 	STA CTRLPF		; 3	5	which turns off SCORE
 
-	LDY #$16		; Playfield counter
+	LDA #FIRST_ARENA_SCANLINE
+	STA SCANLINE
+
+.saveStack:
+	TSX
+	STX STOREDSTACKPTR
 	STA WSYNC
+
+.mainLoop:			; X	33
+	LDX #ENABL		; 2	35
+	TXS			; 2	37
+	LDA SCANLINE		; 3	40
+	LSR			; 2	42
+	LSR			; 2	44
+	LSR			; 2	46
+	TAY			; 2	48
+	LDA PLAYERY0		; 3	51
+	SBC SCANLINE		; 3	54
+	AND #$FE		; 2	56
+	TAX			; 2	58
+	AND #$F0		; 2 	60
+	BEQ .doP0		; 2	62
+	LDA #$00		; 2	64
+	BEQ .noP0		; 3 jmp 67
+.doP0:				; X	63
+	LDA GRP,X		; 4	67
+.noP0:				; X	67
+	LDX SCANLINE		; 3	70
+	STA WSYNC		; 3	--
+	STA GRP0		; 3	3
+	TXA			; 2	5
+	EOR BALLY2		; 3	8
+	AND #$FE		; 2	10
+	PHP			; 3	13
+	LDA PF0_0-6,Y		; 4	17
+	STA PF0			; 3	20
+	LDA PF1_0-6,Y		; 4	24
+	STA PF1			; 3	27
+	LDA PF2_0-6,Y		; 4	31
+	STA PF2			; 3	34
+	STY TEMP		; 3	37
+	INX			; 2	39
+	LDA PLAYERY1		; 3	42
+	SBC SCANLINE		; 3	45
+	AND #$FE		; 2 	47
+	TAY			; 2 	49
+	AND #$F0		; 2	51
+	BEQ .doP1		; 2	53
+	LDA #$00		; 2	55
+	BEQ .noP1		; 3	58
+
+.doP1:				; X	54
+	LDA GRP,Y		; 4	58
+.noP1:
+	STA WSYNC		; 3	--
+	STA GRP1		; 3	3
+	TXA			; 2	5
+	EOR BALLY1		; 3	8
+	AND #$FE		; 2	10
+	PHP			; 3	13
+	TXA			; 2	15
+	EOR BALLY0		; 3	18
+	AND #$FE		; 2	20
+	PHP			; 3	23
+	INX			; 2	25
+	STX SCANLINE		; 3	28
+	CPX #232		; 2	30
+	BCC .mainLoop
 	
-ArenaLoop:
-	LDA PF0_0,Y		; 5	5	Load PF0
-	STA PF0			; 3	8	Store PF0 
-	LDA PF1_0,Y		; 5	13	Load PF1
-	STA PF1			; 3	16	Store PF1
-	LDA PF2_0,Y		; 5	21	Load PF2
-	STA PF2			; 3	24	Store PF2
-	STA WSYNC		; ... some padding to make it all look right, for now.
+.cleanup:
 	STA WSYNC
-	STA WSYNC
-	STA WSYNC
-	STA WSYNC
-	STA WSYNC
-	STA WSYNC
-	STA WSYNC
-	DEY			; Decrement playfield counter, and 
-	BPL ArenaLoop		; loop around. 
-	
+	LDX STOREDSTACKPTR
+	TXS
 	LDA #$00
 	STA PF0
 	STA PF1
 	STA PF2
+	STA GRP0
+	STA GRP1
 	
-KERNWait:
+.waitUntilDone:
 	LDA INTIM
-	BNE KERNWait
+	BNE .waitUntilDone
 	RTS
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ;; Overscan Kernel
+;;; ;; Overscan Period
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-OSCAN:	LDA #$02
+OSCAN:	SUBROUTINE
+	LDA #$02
 	STA WSYNC
 	STA VBLANK
 	LDA #OVERSCAN_WAIT_TIME
 	STA TIM64T
-OSCANWait:
+.waitUntilDone:
 	LDA INTIM
-	BNE OSCANWait
+	BNE .waitUntilDone
 	RTS
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -306,6 +438,13 @@ DivideLoop:
 	sta.wx HMP0,X		; 5	19 - Store fine tuning of X (wx used bc it takes 5 cycles)
 	sta RESP0,X		; 4	23 - Set X position of object
 	rts			; 6 	29 - and done.
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Sleep 12 cycles (JSR & RTS)
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+Sleep12:
+	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Graphics and Tables
@@ -382,46 +521,55 @@ DigitGFX:
         .byte %00010001
         .byte %01110111
 
-GRP0_0:
-	.byte %00000000
-	.byte %00000000
-	.byte %00111100
-	.byte %00111100
-	.byte %00111100
-	.byte %00111100
-	.byte %00000000
-	.byte %00000000
-	
+GRP:
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+	.byte %11111111
+
 	;;
 	;; Playfield Data
 	;;
-PF0_0:
-	.byte %11110000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %00010000
-        .byte %11110000       
 
-PF1_0:
-	.byte %11111111
+PF0_0:   ; PF0 is drawn in reverse order, and only the upper nybble
+        .byte %11110000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %00010000
+        .byte %11110000  
+
+PF1_0:   ; PF1 is drawn in expected order       
+        .byte %11111111 ; Arena 1
         .byte %00000000
         .byte %00000000
         .byte %00111000
@@ -442,11 +590,11 @@ PF1_0:
         .byte %00111000
         .byte %00000000
         .byte %00000000
-        .byte %00000000	
-        .byte %11111111       
+        .byte %00000000
+        .byte %11111111     
 
-PF2_0:
-        .byte %11111111
+PF2_0:   ; PF2 is drawn in reverse order
+        .byte %11111111 ; Arena 1
         .byte %10000000
         .byte %00000000
         .byte %00000000
@@ -469,6 +617,9 @@ PF2_0:
         .byte %00000000
         .byte %10000000
         .byte %11111111       
+
+PFOFFSET:
+	.byte $00
 	
 	;;
 	;; Game Variation Table
@@ -489,9 +640,9 @@ COLRTBL:
 	.byte $0E, $00, $04, $08 ; B/W Ice Dodgeball
 
 	;; Initial Position Table
-	;; Y1, Y0, X1, X0
+	;; X0, X1, Y0, Y1
 InitialPosTbl:
-	.byte $3F, $3F, $80, $20
+	.byte $20, $80, $3F, $3F
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
