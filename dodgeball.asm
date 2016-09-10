@@ -32,6 +32,7 @@ FIRST_ARENA_SCANLINE = 49	; First Arena Scanline
 KERNEL_SCANLINE_BIAS = 6	; scanline bias
 KERNEL_SCANLINE_MAX = 232	; Max kernel scanline (minus overscan)
 PLAYFIELD_HEIGHT = 91
+
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Variables
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -44,6 +45,7 @@ PLAYFIELD_HEIGHT = 91
 	;; 
 	;; global variables/state
 	;; 
+FRAME			ds 1	; Frame counter
 SCANLINE:		ds 1	; temporarily stored scanline
 STOREDSTACKPTR:		ds 1	; Stored SP for kernel.
 GAMVAR:			ds 1	; Game Variation (0 indexed)
@@ -61,19 +63,33 @@ DIGITONES:		ds 2	; Holder for ones digit for p1/p0
 DIGITTENS:		ds 2	; holder for tens digit for p1/p0
 
 	;;
-	;; player position variables
+	;; position variables
 	;; 
 PLAYERX0:		ds 1	; Player 0 X
 PLAYERX1:		ds 1	; Player 1 X
+BALLX0:			ds 1	; Ball 0 X
+BALLX1:			ds 1	; Ball 1 X
+BALLX2:			ds 1	; Ball 2 X
 PLAYERY0:		ds 1	; Player 0 Y
 PLAYERY1:		ds 1	; Player 1 Y
-BALLX0:			ds 1	; Ball 0 X (M0)
-BALLX1:			ds 1	; Ball 1 X (M1)
-BALLX2:			ds 1	; Ball 2 X (BL) Computer ball
 BALLY0:			ds 1	; Ball 0 Y (M0)
 BALLY1:			ds 1	; Ball 1 Y (M1)
 BALLY2:			ds 1	; Ball 2 Y (BL) Computer Ball
-		
+
+	;;
+	;; position variables (last known good)
+	;; 
+PLAYERX0S:		ds 1	; Player 0 X
+PLAYERX1S:		ds 1	; Player 1 X
+BALLX0S:		ds 1	; Ball 0 X
+BALLX1S:		ds 1	; Ball 1 X
+BALLX2S:		ds 1	; Ball 2 X
+PLAYERY0S:		ds 1	; Player 0 Y
+PLAYERY1S:		ds 1	; Player 1 Y
+BALLY0S:		ds 1	; Ball 0 Y (M0)
+BALLY1S:		ds 1	; Ball 1 Y (M1)
+BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
+	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -86,31 +102,12 @@ BALLY2:			ds 1	; Ball 2 Y (BL) Computer Ball
 ColdStart:
 	CLEAN_START		; defined in macro.h
 	
-	;;
-	;; Temp-o-rama, get rid of it ASAP
-	;;
-	
-	LDA #$40
-	STA BALLX0
-	STA BALLY0
-
-	LDA #$88
-	STA BALLX1
-	STA BALLY1
-
-	LDA #$AC
-	STA BALLX2
-	STA BALLY2
-
-	LDX #$04
-CSPOSX:	
-	LDA PLAYERX0,x
-	JSR PosObject
-	DEX
-	BPL CSPOSX
-
 	JSR GameReset		; Call Game Reset after cold start.
-	
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Main Loop
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 	JSR VBLNK		; Vertical Blank routines
 	JSR KERNEL		; Visible Display
@@ -121,7 +118,9 @@ MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 ;;; ;; Vertical control
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-VCNTRL:	LDA #$02		; D1 = 1
+VCNTRL: INC FRAME		; Increment master frame counter.
+	STA HMCLR		; Clear motion registers.
+	LDA #$02		; D1 = 1
 	STA WSYNC		; Make sure we're at the beginning of a scanline, and...
 	STA VSYNC		; Turn on the Vertical sync
 	STA WSYNC		; And do it for one...
@@ -142,26 +141,24 @@ VBLNK:	SUBROUTINE
 	LDA #$02		; D1 = 1
 	STA VBLANK		; Start VBLANK
 	LDX GAMVAR		; Get Game Variation #
-	LDA VARTBL,X		; Get variation from table
+	LDA VARTBL,X		; Get variation from table	
 	STA GAMPFMODE		; And store it in Game PF mode
 	JSR SetTIA		; Set TIA Registers
+	JSR ProcessJoysticks	; Process Joysticks
 	JSR PositionObjects	; And Position Objects
 	JSR PrepScore		; Prepare score for kernel display.
-	INC PLAYERY0
-	INC PLAYERY1
 .waitUntilDone:
 	LDA INTIM		; Poll the timer
 	BNE .waitUntilDone	; and if not ready, loop back to wait.
 	RTS
-
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Set TIA Registers
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 SetTIA:	SUBROUTINE
-	LDA #$00
-	STA VDELP0
-	STA VDELP1
+	LDA #$01		; XXX TEMPORARY
+	STA VDELP0		; XXX TEMPORARY (puts both players on same line)
 	LDA #$10
 	STA NUSIZ0
 	STA NUSIZ1
@@ -187,6 +184,36 @@ SetTIA:	SUBROUTINE
 	RTS			; then return.
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Process Joysticks
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+ProcessJoysticks: SUBROUTINE
+	LDX #$00
+	LDA SWCHA
+	
+right:	ASL
+	BCS left
+	INC PLAYERX0,X
+	
+left:	ASL
+	BCS down
+	DEC PLAYERX0,X
+
+down:	ASL
+	BCS up
+	INC PLAYERY0,X
+
+up:	ASL
+	BCS next
+	DEC PLAYERY0,X
+
+next:	INX
+	CPX #$03
+	BNE right
+	
+	RTS
+	
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Position Objects
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -194,12 +221,13 @@ SetTIA:	SUBROUTINE
 	;; Do X positions
 	;; 
 PositionObjects: SUBROUTINE
-	LDX #$01		; For now, position P0 and P1
-.setXPOS:	
-	LDA PLAYERX0,x		; Load player position
-	JSR PosObject		; Call PosObject to set X pos
-	DEX			; Decrement loop counter
-	BPL .setXPOS		; Go back and loop if not done.
+	LDX #$01
+XLoop:	LDA PLAYERX0,X
+	JSR PosObject
+	DEX
+	BPL XLoop
+	STA WSYNC
+	STA HMOVE
 	RTS			; otherwise, return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -227,19 +255,21 @@ PrepScore: SUBROUTINE
 	dex			; decrement X to do the P0 in the second pass
 	bpl .loop		; Only return if X < 0
 	rts			; if we're done? return.
-
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; GameReset - Reset players to initial pos
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 GameReset: SUBROUTINE
-	LDX #$03		; 4 entries in table
-.setPositions:	
-	LDA InitialPosTbl,X	; Get Next entry
-	STA PLAYERX0,x		; Set it.
-	DEX			; decrement loop counter
-	BPL .setPositions	; loop through past 0
-	
+	LDA #$08
+	STA PLAYERX0
+	LDA #$8F
+	STA PLAYERX1
+	STA RESMP0
+	STA RESMP1
+	LDA #$90
+	STA PLAYERY0
+	STA PLAYERY1
 	RTS			; and return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -255,11 +285,9 @@ KERNEL:	SUBROUTINE
 	STA VBLANK
 	LDA #KERNEL_WAIT_TIME
 	STA TIM64T
-	STA HMOVE
 	STA CXCLR
 	LDA #$02
 	STA CTRLPF 		; flip on SCORE mode to get ready.
-	STA WSYNC
 	;;
 	;; Score kernel
 	;;
@@ -388,6 +416,9 @@ KERNEL:	SUBROUTINE
 	STA PF2
 	STA GRP0
 	STA GRP1
+	STA ENABL
+	STA ENAM0
+	STA ENAM1
 	
 .waitUntilDone:
 	LDA INTIM
@@ -404,11 +435,51 @@ OSCAN:	SUBROUTINE
 	STA VBLANK
 	LDA #OVERSCAN_WAIT_TIME
 	STA TIM64T
+	JSR ProcessCollisions
 .waitUntilDone:
 	LDA INTIM
 	BNE .waitUntilDone
 	RTS
 
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; ProcessCollisions
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+ProcessCollisions: SUBROUTINE
+	;;
+	;; Handle Player to Playfield collisions
+	;; 
+	LDX #$01
+PLtoPF:
+	LDA CXP0FB,X
+	BPL nextPLtoPF
+PLtoPFCollide:
+	JSR RecallPlayerPosition
+nextPLtoPF:
+	JSR SavePlayerPosition
+	DEX
+	BPL PLtoPF
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; RecallPosition
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+RecallPlayerPosition:	SUBROUTINE
+	LDA PLAYERX0S,X
+	STA PLAYERX0,X
+	LDA PLAYERY0S,X
+	STA PLAYERY0,X
+	RTS
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; SavePosition
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+SavePlayerPosition:	SUBROUTINE
+	LDA PLAYERX0,X
+	STA PLAYERX0S,X
+	LDA PLAYERY0,X
+	STA PLAYERY0S,X	
+	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; PosObject subroutine
 ;;; ;; A = X Position of Object
@@ -522,23 +593,24 @@ DigitGFX:
         .byte %01110111
 
 GRP:
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
-	.byte %11111111
+	.byte %00000000
+	.byte %00000000
+	.byte %00000000
+	.byte %00000000
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00111100
+	.byte %00000000
+	.byte %00000000
+	.byte %00000000
+	.byte %00000000
 
+	
 	;;
 	;; Playfield Data
 	;;
