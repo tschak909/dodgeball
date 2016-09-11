@@ -51,8 +51,9 @@ STOREDSTACKPTR:		ds 1	; Stored SP for kernel.
 GAMVAR:			ds 1	; Game Variation (0 indexed)
 GAMPFMODE:		ds 1	; Game PF mode
 TEMP:			ds 1	; temp variable.
+TEMP1:			ds 1	; Temp Variable 2.
 CYCLE:			ds 1	; Color cycle.
-GAMESTATE:		ds 1	; Game State (D7 = Game On/Off)
+GAMESTATE:		ds 1	; Game State (00 = Not Playing, FF = Game on)
 
 	;;
 	;; score variables
@@ -89,6 +90,8 @@ PLAYERY1S:		ds 1	; Player 1 Y
 BALLY0S:		ds 1	; Ball 0 Y (M0)
 BALLY1S:		ds 1	; Ball 1 Y (M1)
 BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
+
+BALLD0:			ds 1	; Ball 0 Direction
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -118,7 +121,8 @@ MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 ;;; ;; Vertical control
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-VCNTRL: INC FRAME		; Increment master frame counter.
+VCNTRL: SUBROUTINE
+	INC FRAME		; Increment master frame counter.
 	STA HMCLR		; Clear motion registers.
 	LDA #$02		; D1 = 1
 	STA WSYNC		; Make sure we're at the beginning of a scanline, and...
@@ -145,6 +149,8 @@ VBLNK:	SUBROUTINE
 	STA GAMPFMODE		; And store it in Game PF mode
 	JSR SetTIA		; Set TIA Registers
 	JSR ProcessJoysticks	; Process Joysticks
+	LDX #$01
+	JSR BallDirection	; Compute ball direction
 	JSR PositionObjects	; And Position Objects
 	JSR PrepScore		; Prepare score for kernel display.
 .waitUntilDone:
@@ -188,28 +194,27 @@ SetTIA:	SUBROUTINE
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ProcessJoysticks: SUBROUTINE
-	LDX #$00
+	LDX #$01
 	LDA SWCHA
 	
-right:	ASL
-	BCS left
-	INC PLAYERX0,X
-	
-left:	ASL
+up:	LSR
 	BCS down
-	DEC PLAYERX0,X
-
-down:	ASL
-	BCS up
+	DEC PLAYERY0,X
+	
+down:	LSR
+	BCS left
 	INC PLAYERY0,X
 
-up:	ASL
-	BCS next
-	DEC PLAYERY0,X
+left:	LSR
+	BCS right
+	DEC PLAYERX0,X
 
-next:	INX
-	CPX #$03
-	BNE right
+right:	LSR
+	BCS next
+	INC PLAYERX0,X
+
+next:	DEX
+	BPL up
 	
 	RTS
 	
@@ -221,7 +226,7 @@ next:	INX
 	;; Do X positions
 	;; 
 PositionObjects: SUBROUTINE
-	LDX #$01
+	LDX #$04
 XLoop:	LDA PLAYERX0,X
 	JSR PosObject
 	DEX
@@ -265,11 +270,14 @@ GameReset: SUBROUTINE
 	STA PLAYERX0
 	LDA #$8F
 	STA PLAYERX1
-	STA RESMP0
-	STA RESMP1
 	LDA #$90
 	STA PLAYERY0
 	STA PLAYERY1
+
+	LDA #$3F
+	STA BALLX1
+	STA BALLY1
+	
 	RTS			; and return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -459,7 +467,9 @@ nextPLtoPF:
 	JSR SavePlayerPosition
 	DEX
 	BPL PLtoPF
+	RTS
 
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; RecallPosition
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -479,6 +489,194 @@ SavePlayerPosition:	SUBROUTINE
 	LDA PLAYERY0,X
 	STA PLAYERY0S,X	
 	RTS
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; BallDirection
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+BallDirection:	SUBROUTINE
+
+	LDA BALLD0
+	
+D01:	CMP #$01
+	BNE D02
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$02
+	STA BALLX0,X
+	TYA
+
+D02:	CMP #$02
+	BNE D03
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$01
+	STA BALLY0,X
+	TYA
+
+D03:	CMP #$03
+	BNE D04
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$02
+	STA BALLY0,X
+	TYA
+
+D04:	CMP #$04
+	BNE D05
+	TAY
+	LDA BALLY0,X
+	SBC #$02
+	STA BALLY0,X
+	TYA
+
+D05:	CMP #$05
+	BNE D06
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$01
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$02
+	STA BALLY0,X
+	TYA
+
+D06:	CMP #$06
+	BNE D07
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$02
+	STA BALLY0,X
+	TYA
+
+D07:	CMP #$07
+	BNE D08
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$01
+	STA BALLY0,X
+	TYA
+
+D08:	CMP #$08
+	BNE D09
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$01
+	STA BALLX0,X
+	TYA
+
+D09:	CMP #$09
+	BNE D0A
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$01
+	STA BALLY0,X
+	TYA
+
+D0A:	CMP #$0A
+	BNE D0B
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$02
+	STA BALLY0,X
+	TYA
+
+D0B:	CMP #$0B
+	BNE D0C
+	TAY
+	LDA BALLX0,X
+	SEC
+	SBC #$01
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$02
+	STA BALLY0,X
+	TYA
+
+D0C:	CMP #$0C
+	BNE D0D
+	TAY
+	LDA BALLY0,X
+	CLC
+	ADC #$02
+	STA BALLY0,X
+	TYA
+
+D0D:	CMP #$0D
+	BNE D0E
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$01
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$02
+	STA BALLY0,X
+	TYA
+
+D0E:	CMP #$0E
+	BNE D0F
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$02
+	STA BALLY0,X
+	TYA
+
+D0F:	CMP #$0F
+	BNE done
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$02
+	STA BALLX0,X
+	LDA BALLY0,X
+	CLC
+	ADC #$01
+	STA BALLY0,X
+	TYA
+done:	RTS
+
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; PosObject subroutine
@@ -715,6 +913,9 @@ COLRTBL:
 	;; X0, X1, Y0, Y1
 InitialPosTbl:
 	.byte $20, $80, $3F, $3F
+
+DirectnToXY:
+	.byte $01, $F1, $F0, $FF, $0F, $1F, $10, $11
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
