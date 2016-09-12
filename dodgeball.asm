@@ -92,6 +92,7 @@ BALLY1S:		ds 1	; Ball 1 Y (M1)
 BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
 
 BALLD0:			ds 1	; Ball 0 Direction
+BALLD0S:		ds 1	; Ball 0 Direction save
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -149,7 +150,7 @@ VBLNK:	SUBROUTINE
 	STA GAMPFMODE		; And store it in Game PF mode
 	JSR SetTIA		; Set TIA Registers
 	JSR ProcessJoysticks	; Process Joysticks
-	LDX #$01
+	LDX #$02
 	JSR BallDirection	; Compute ball direction
 	JSR PositionObjects	; And Position Objects
 	JSR PrepScore		; Prepare score for kernel display.
@@ -275,8 +276,8 @@ GameReset: SUBROUTINE
 	STA PLAYERY1
 
 	LDA #$3F
-	STA BALLX1
-	STA BALLY1
+	STA BALLX2
+	STA BALLY2
 	
 	RTS			; and return.
 	
@@ -467,6 +468,21 @@ nextPLtoPF:
 	JSR SavePlayerPosition
 	DEX
 	BPL PLtoPF
+
+	LDX #$04
+BLtoPF:
+	LDA CXP0FB,X
+	BPL nextBLtoPF
+BLtoPFCollide:
+	JSR RecallPlayerPosition
+	LDA BALLD0
+	ADC #$08
+	AND #$0F
+noJigger:
+	STA BALLD0
+nextBLtoPF:
+	JSR SavePlayerPosition
+	
 	RTS
 
 	
@@ -497,9 +513,9 @@ SavePlayerPosition:	SUBROUTINE
 BallDirection:	SUBROUTINE
 
 	LDA BALLD0
-	
-D01:	CMP #$01
-	BNE D02
+
+D00:	CMP #$00
+	BNE D01
 	TAY
 	LDA BALLX0,X
 	CLC
@@ -507,8 +523,8 @@ D01:	CMP #$01
 	STA BALLX0,X
 	TYA
 
-D02:	CMP #$02
-	BNE D03
+D01:	CMP #$01
+	BNE D02
 	TAY
 	LDA BALLX0,X
 	CLC
@@ -520,8 +536,8 @@ D02:	CMP #$02
 	STA BALLY0,X
 	TYA
 
-D03:	CMP #$03
-	BNE D04
+D02:	CMP #$02
+	BNE D03
 	TAY
 	LDA BALLX0,X
 	CLC
@@ -533,10 +549,24 @@ D03:	CMP #$03
 	STA BALLY0,X
 	TYA
 
+D03:	CMP #$03
+	BNE D04
+	TAY
+	LDA BALLX0,X
+	CLC
+	ADC #$01
+	STA BALLX0,X
+	LDA BALLY0,X
+	SEC
+	SBC #$02
+	STA BALLY0,X
+	TYA
+
 D04:	CMP #$04
 	BNE D05
 	TAY
 	LDA BALLY0,X
+	SEC
 	SBC #$02
 	STA BALLY0,X
 	TYA
@@ -585,7 +615,7 @@ D08:	CMP #$08
 	TAY
 	LDA BALLX0,X
 	SEC
-	SBC #$01
+	SBC #$02
 	STA BALLX0,X
 	TYA
 
@@ -610,8 +640,8 @@ D0A:	CMP #$0A
 	SBC #$02
 	STA BALLX0,X
 	LDA BALLY0,X
-	CLC
-	ADC #$02
+	SEC
+	SBC #$02
 	STA BALLY0,X
 	TYA
 
@@ -675,6 +705,7 @@ D0F:	CMP #$0F
 	ADC #$01
 	STA BALLY0,X
 	TYA
+
 done:	RTS
 
 	
