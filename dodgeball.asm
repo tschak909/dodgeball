@@ -286,6 +286,10 @@ GameReset: SUBROUTINE
 	LDA #$70
 	STA BALLX2
 	STA BALLY2
+
+	LDA #$FF
+	STA BALLD0
+	STA BALLD1
 	
 	RTS			; and return.
 	
@@ -551,12 +555,21 @@ SaveBallPosition:	SUBROUTINE
 BallDirection:	SUBROUTINE
 
 	LDX #$02		; Start with computer ball
-nextBall:
+doBall:
 	LDY BALLD0,X		; Get requested ball vector
+
+	;;
+	;; First, we deal with Special case $FF, which means
+	;; do not move the ball.
+	;;
+
+	CMP #$FF		; $FF = do not move, stay still.
+	BEQ nextBall		; If so, skip this ball.
 	
 	;;
 	;; Deal with Ball X
 	;; 
+moveBall:
 	LDA BALLX0,X		; Get current ball X
 	CLC			; clear carry
 	ADC BallVectorX,Y	; Add the new vector difference
@@ -573,13 +586,14 @@ nextBall:
 	;;
 	;; If not done, do the next ball
 	;; 
+nextBall:
 	DEX			; Decrement X (which ball)
-	BPL nextBall		; If >= 0, do the next ball.
+	BPL doBall		; If >= 0, do the next ball.
 	
-done:	RTS
+	RTS
 
 	;;
-	;; This table is obviously shifted, come back here and optimize thE #@(%@ out of this.
+	;; This table is obviously shifted, come back here and collapse this.
 	;; 
 BallVectorX:
 	.byte $02, $02, $02, $01, $00, $FF, $FE, $FE, $FE, $FE, $FE, $FF, $00, $01, $02, $02
