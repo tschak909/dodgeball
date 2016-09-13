@@ -92,7 +92,8 @@ BALLY1S:		ds 1	; Ball 1 Y (M1)
 BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
 
 BALLD0:			ds 1	; Ball 0 Direction
-BALLD0S:		ds 1	; Ball 0 Direction save
+BALLD1:			ds 1	; Ball 1 Direction
+BallD2:			ds 1	; Ball 2 Direction
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -150,8 +151,7 @@ VBLNK:	SUBROUTINE
 	STA GAMPFMODE		; And store it in Game PF mode
 	JSR SetTIA		; Set TIA Registers
 	JSR ProcessJoysticks	; Process Joysticks
-	LDX #$02
-	JSR BallDirection	; Compute ball direction
+	JSR BallDirection	; Compute ball directions
 	JSR PositionObjects	; And Position Objects
 	JSR PrepScore		; Prepare score for kernel display.
 .waitUntilDone:
@@ -276,6 +276,14 @@ GameReset: SUBROUTINE
 	STA PLAYERY1
 
 	LDA #$3F
+	STA BALLX0
+	STA BALLY0
+
+	LDA #$75
+	STA BALLX1
+	STA BALLY1
+	
+	LDA #$70
 	STA BALLX2
 	STA BALLY2
 	
@@ -458,256 +466,126 @@ ProcessCollisions: SUBROUTINE
 	;;
 	;; Handle Player to Playfield collisions
 	;; 
-	LDX #$01
+	LDX #$01		; Start with Player 1
 PLtoPF:
-	LDA CXP0FB,X
-	BPL nextPLtoPF
+	LDA CXP0FB,X		; Did player collide with playfield?
+	BPL nextPLtoPF		; No.
 PLtoPFCollide:
-	JSR RecallPlayerPosition
+	JSR RecallPlayerPosition ; Yes, recall the player position.
 nextPLtoPF:
-	JSR SavePlayerPosition
-	DEX
-	BPL PLtoPF
+	JSR SavePlayerPosition	; And subsequently save it.
+	DEX			; decrement to next player
+	BPL PLtoPF		; if we're not done with player 0, loop around.
 
-	LDX #$04
+	;;
+	;; Handle Ball collisions (PONG), currently no decay.
+	;; Assumes carry is set.
+	;; 
+	LDX #$02		; Start with computer ball
 BLtoPF:
-	LDA CXP0FB,X
-	BPL nextBLtoPF
+	LDA CXM0FB,X		; Read collision
+	BPL nextBLtoPF		; if collision didn't happen, skip to next ball.
 BLtoPFCollide:
-	JSR RecallPlayerPosition
-	LDA BALLD0
-	ADC #$08
-	AND #$0F
-noJigger:
-	STA BALLD0
+	JSR RecallBallPosition	; otherwise, recall the previous ball position
+	LDA BALLD0,X		; Load the requested direction vector
+	ADC #$08		; reflect it (the carry will add an additional 22.5 deg)
+	AND #$0F		; and make sure we stay within 16 possible directions.
+	STA BALLD0,X		; store the new vector
+	AND #$03		; check if it is N, S, E, W?
+	BNE nextBLtoPF		; if not, go to next ball.
+	INC BALLD0,X		; if so, add an additional 22.5 deg to keep it diagonal.
 nextBLtoPF:
-	JSR SavePlayerPosition
-	
-	RTS
+	JSR SaveBallPosition	; Save ball position.
+	DEX			; Decrement to next ball.
+	BPL BLtoPF		; if we're not at ball 0 yet, go back.
+	RTS			; else, return.
 
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; RecallPosition
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-RecallPlayerPosition:	SUBROUTINE
-	LDA PLAYERX0S,X
-	STA PLAYERX0,X
-	LDA PLAYERY0S,X
-	STA PLAYERY0,X
-	RTS
 
+	;;
+	;; TODO: Refactor this to rename RecallPlayerPosition to RecallPosition
+	;; 
+RecallPlayerPosition:	SUBROUTINE
+	LDA PLAYERX0S,X		; Load last saved X
+	STA PLAYERX0,X		; store to current X
+	LDA PLAYERY0S,X		; Load last saved Y
+	STA PLAYERY0,X		; store to current Y
+	RTS			; return
+
+RecallBallPosition:	SUBROUTINE
+	LDA BALLX0S,X		; Load last saved X
+	STA BALLX0,X		; store to current X
+	LDA BALLY0S,X		; load last saved Y
+	STA BALLY0,X		; store to current Y
+	RTS			; return
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; SavePosition
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 SavePlayerPosition:	SUBROUTINE
-	LDA PLAYERX0,X
-	STA PLAYERX0S,X
-	LDA PLAYERY0,X
-	STA PLAYERY0S,X	
-	RTS
 
+	;;
+	;; TODO: Refactor this to make it simply SavePosition, get rid of redundancy.
+	;; 
+	
+	LDA PLAYERX0,X		; Get Player X current position
+	STA PLAYERX0S,X		; store to last saved X position
+	LDA PLAYERY0,X		; Get Player Y current position
+	STA PLAYERY0S,X		; store to last saved Y position
+	RTS			; and return
+
+SaveBallPosition:	SUBROUTINE
+	LDA BALLX0,X		; Get Ball X current Position
+	STA BALLX0S,X		; store to last saved X position
+	LDA BALLY0,X		; Get Ball Y current position
+	STA BALLY0S,X		; store to last saved Y position
+	RTS			; return
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; BallDirection
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 BallDirection:	SUBROUTINE
 
-	LDA BALLD0
+	LDX #$02		; Start with computer ball
+nextBall:
+	LDY BALLD0,X		; Get requested ball vector
+	
+	;;
+	;; Deal with Ball X
+	;; 
+	LDA BALLX0,X		; Get current ball X
+	CLC			; clear carry
+	ADC BallVectorX,Y	; Add the new vector difference
+	STA BALLX0,X		; store it back into Ball X
 
-D00:	CMP #$00
-	BNE D01
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$02
-	STA BALLX0,X
-	TYA
+	;;
+	;; Deal with Ball Y
+	;;
+	LDA BALLY0,X		; Get current ball Y
+	CLC			; clear carry
+	ADC BallVectorY,Y	; Add the new vector difference
+	STA BALLY0,X		; store it back into Ball Y
 
-D01:	CMP #$01
-	BNE D02
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$01
-	STA BALLY0,X
-	TYA
-
-D02:	CMP #$02
-	BNE D03
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D03:	CMP #$03
-	BNE D04
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$01
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D04:	CMP #$04
-	BNE D05
-	TAY
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D05:	CMP #$05
-	BNE D06
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$01
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D06:	CMP #$06
-	BNE D07
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D07:	CMP #$07
-	BNE D08
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$01
-	STA BALLY0,X
-	TYA
-
-D08:	CMP #$08
-	BNE D09
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$02
-	STA BALLX0,X
-	TYA
-
-D09:	CMP #$09
-	BNE D0A
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	CLC
-	ADC #$01
-	STA BALLY0,X
-	TYA
-
-D0A:	CMP #$0A
-	BNE D0B
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	SEC
-	SBC #$02
-	STA BALLY0,X
-	TYA
-
-D0B:	CMP #$0B
-	BNE D0C
-	TAY
-	LDA BALLX0,X
-	SEC
-	SBC #$01
-	STA BALLX0,X
-	LDA BALLY0,X
-	CLC
-	ADC #$02
-	STA BALLY0,X
-	TYA
-
-D0C:	CMP #$0C
-	BNE D0D
-	TAY
-	LDA BALLY0,X
-	CLC
-	ADC #$02
-	STA BALLY0,X
-	TYA
-
-D0D:	CMP #$0D
-	BNE D0E
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$01
-	STA BALLX0,X
-	LDA BALLY0,X
-	CLC
-	ADC #$02
-	STA BALLY0,X
-	TYA
-
-D0E:	CMP #$0E
-	BNE D0F
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	CLC
-	ADC #$02
-	STA BALLY0,X
-	TYA
-
-D0F:	CMP #$0F
-	BNE done
-	TAY
-	LDA BALLX0,X
-	CLC
-	ADC #$02
-	STA BALLX0,X
-	LDA BALLY0,X
-	CLC
-	ADC #$01
-	STA BALLY0,X
-	TYA
-
+	;;
+	;; If not done, do the next ball
+	;; 
+	DEX			; Decrement X (which ball)
+	BPL nextBall		; If >= 0, do the next ball.
+	
 done:	RTS
 
+	;;
+	;; This table is obviously shifted, come back here and optimize thE #@(%@ out of this.
+	;; 
+BallVectorX:
+	.byte $02, $02, $02, $01, $00, $FF, $FE, $FE, $FE, $FE, $FE, $FF, $00, $01, $02, $02
+
+BallVectorY:
+	.byte $00, $FF, $FE, $FE, $FE, $FE, $FE, $FF, $00, $01, $02, $02, $02, $02, $02, $01
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; PosObject subroutine
