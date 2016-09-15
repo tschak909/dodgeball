@@ -91,9 +91,15 @@ BALLY0S:		ds 1	; Ball 0 Y (M0)
 BALLY1S:		ds 1	; Ball 1 Y (M1)
 BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
 
+PLAYERD0:		ds 1	; Player 0 Direction
+PLAYERD1:		ds 1	; Player 1 Direction
 BALLD0:			ds 1	; Ball 0 Direction
 BALLD1:			ds 1	; Ball 1 Direction
 BallD2:			ds 1	; Ball 2 Direction
+
+DECAY0:			ds 1	; Ball 0 Decay
+DECAY1:			ds 1	; Ball 1 Decay (computer ball 2 has no decay)
+	
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -144,7 +150,7 @@ VCNTRL: SUBROUTINE
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 VBLNK:	SUBROUTINE
-	LDA #$02		; D1 = 1
+	LDA #$42		; D1 = 1
 	STA VBLANK		; Start VBLANK
 	LDX GAMVAR		; Get Game Variation #
 	LDA VARTBL,X		; Get variation from table	
@@ -195,29 +201,58 @@ SetTIA:	SUBROUTINE
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 ProcessJoysticks: SUBROUTINE
-	LDX #$01
-	LDA SWCHA
+	LDX #$01		; Start with Player 1
+	LDA SWCHA		; and scan the joysticks.
+	EOR #$FF		; flip the bits.
+loop:	STA TEMP		; now contains sticks, pre-mask
+	AND #$0F		; only deal with bottom 4 bits
+	TAY			; transfer to the Y for index
+	LDA JoyToDirTable,Y	; grab the desired vector
+	STA TEMP1		; now contains desired vector
+	LDA INPT4,X		; scan fire button.
+	AND #$80
+	CMP #$80
+	BPL nofire		; if fire wasn't pressed, go to nofire
+fire:	LDA #$00
+	STA RESMP0,X		; Turn off missile center reset
+	LDA PLAYERX0,X		; load player X
+	CLC
+	ADC #$02
+	STA BALLX0,X		; make ball X
+	LDA PLAYERY0,X		; load player Y
+	SEC
+	SBC #$08
+	STA BALLY0,X		; make ball Y
+	LDA TEMP1		; if fire pressed, load the desired velocity
+	STA BALLD0,X		; store in the ball's desired motion vector.
+	LDA #$FF		; ... stop the player in their tracks.
+	STA PLAYERD0,X		; ...
+	LDA #$3F		; store initial decay.
+	STA DECAY0,X		;
+	BVC next		; and go to next player.
+nofire:	LDA TEMP1		; else, load the stored desired velocity.
+	STA PLAYERD0,X		; store the new vector into player's direction.
+	LDA DECAY0,X		; Load decay
+	CMP #$00		; is ball dead?
+	BEQ next		; if so, go to next bal.
+	SEC			; otherwise...
+	SBC #$01		; subtract one from ball's decay counter.
+	STA DECAY0,X		; and store.
+	CMP #$00		; did we just die?
+	BNE next		; no, go to next ball.
+	LDA #$FF		; make ball still
+	STA BALLD0,X	  	; and store.
+next:	LDA TEMP		; Re-grab saved SWCHA
+	LSR			; and shift out the already processed bytes
+	LSR			;
+	LSR			;
+	LSR			; 
+	DEX			; decrement player joystick index
+	BPL loop		; if we haven't processed 0, loop around
+	RTS			; else, return.
 	
-up:	LSR
-	BCS down
-	DEC PLAYERY0,X
-	
-down:	LSR
-	BCS left
-	INC PLAYERY0,X
-
-left:	LSR
-	BCS right
-	DEC PLAYERX0,X
-
-right:	LSR
-	BCS next
-	INC PLAYERX0,X
-
-next:	DEX
-	BPL up
-	
-	RTS
+JoyToDirTable:
+	.BYTE $FF, $04, $0C, $FF, $08, $06, $0A, $FF, $00, $02, $0E, $FF, $FF, $FF, $FF, $FF
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Position Objects
@@ -288,6 +323,8 @@ GameReset: SUBROUTINE
 	STA BALLY2
 
 	LDA #$FF
+	STA PLAYERD0
+	STA PLAYERD1
 	STA BALLD0
 	STA BALLD1
 	
@@ -390,7 +427,7 @@ KERNEL:	SUBROUTINE
 	STA GRP0		; 3	3
 	TXA			; 2	5
 	EOR BALLY2		; 3	8
-	AND #$FE		; 2	10
+	AND #$FC		; 2	10
 	PHP			; 3	13
 	LDA PF0_0-6,Y		; 4	17
 	STA PF0			; 3	20
@@ -416,11 +453,11 @@ KERNEL:	SUBROUTINE
 	STA GRP1		; 3	3
 	TXA			; 2	5
 	EOR BALLY1		; 3	8
-	AND #$FE		; 2	10
+	AND #$FC		; 2	10
 	PHP			; 3	13
 	TXA			; 2	15
 	EOR BALLY0		; 3	18
-	AND #$FE		; 2	20
+	AND #$FC		; 2	20
 	PHP			; 3	23
 	INX			; 2	25
 	STX SCANLINE		; 3	28
@@ -502,6 +539,25 @@ nextBLtoPF:
 	JSR SaveBallPosition	; Save ball position.
 	DEX			; Decrement to next ball.
 	BPL BLtoPF		; if we're not at ball 0 yet, go back.
+
+	;;
+	;; Handle case when player collides with his own ball. Automatically grab it.
+	;;
+	
+	LDX #$01		; start with player ball
+MxtoPL:	LDA CXM0P,X		; scan missile collision registers
+	AND #$40
+	CMP #$40
+	BNE nextMxtoPL		; go to next ball, if player didn't collide with ball.
+	LDA DECAY0,X
+	CMP #$00
+	BNE nextMxtoPL
+	LDA #$02		; we collided, set bit 2
+	STA RESMP0,X		; and strobe RESMP0 to reset missile to center of player.
+nextMxtoPL:
+	DEX			; decrement player/missile counter
+	BPL MxtoPL		; and branch back if we haven't taken care of P0/M0.
+	
 	RTS			; else, return.
 
 	
@@ -554,34 +610,34 @@ SaveBallPosition:	SUBROUTINE
 
 BallDirection:	SUBROUTINE
 
-	LDX #$02		; Start with computer ball
+	LDX #$04		; Start with computer ball
 doBall:
-	LDY BALLD0,X		; Get requested ball vector
+	LDY PLAYERD0,X		; Get requested ball vector
 
 	;;
 	;; First, we deal with Special case $FF, which means
 	;; do not move the ball.
 	;;
 
-	CMP #$FF		; $FF = do not move, stay still.
+	CPY #$FF		; $FF = do not move, stay still.
 	BEQ nextBall		; If so, skip this ball.
 	
 	;;
 	;; Deal with Ball X
 	;; 
 moveBall:
-	LDA BALLX0,X		; Get current ball X
+	LDA PLAYERX0,X		; Get current ball X
 	CLC			; clear carry
 	ADC BallVectorX,Y	; Add the new vector difference
-	STA BALLX0,X		; store it back into Ball X
+	STA PLAYERX0,X		; store it back into Ball X
 
 	;;
 	;; Deal with Ball Y
 	;;
-	LDA BALLY0,X		; Get current ball Y
+	LDA PLAYERY0,X		; Get current ball Y
 	CLC			; clear carry
 	ADC BallVectorY,Y	; Add the new vector difference
-	STA BALLY0,X		; store it back into Ball Y
+	STA PLAYERY0,X		; store it back into Ball Y
 
 	;;
 	;; If not done, do the next ball
@@ -836,9 +892,6 @@ COLRTBL:
 	;; X0, X1, Y0, Y1
 InitialPosTbl:
 	.byte $20, $80, $3F, $3F
-
-DirectnToXY:
-	.byte $01, $F1, $F0, $FF, $0F, $1F, $10, $11
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
