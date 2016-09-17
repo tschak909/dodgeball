@@ -52,6 +52,8 @@ GAMVAR:			ds 1	; Game Variation (0 indexed)
 GAMPFMODE:		ds 1	; Game PF mode
 TEMP:			ds 1	; temp variable.
 TEMP1:			ds 1	; Temp Variable 2.
+TEMP2:			ds 1	; Temp Variable 3.
+TEMP3:			ds 1	; Temp Variable 4.
 CYCLE:			ds 1	; Color cycle.
 GAMESTATE:		ds 1	; Game State (00 = Not Playing, FF = Game on)
 
@@ -95,7 +97,7 @@ PLAYERD0:		ds 1	; Player 0 Direction
 PLAYERD1:		ds 1	; Player 1 Direction
 BALLD0:			ds 1	; Ball 0 Direction
 BALLD1:			ds 1	; Ball 1 Direction
-BallD2:			ds 1	; Ball 2 Direction
+BALLD2:			ds 1	; Ball 2 Direction
 
 DECAY0:			ds 1	; Ball 0 Decay
 DECAY1:			ds 1	; Ball 1 Decay (computer ball 2 has no decay)
@@ -204,11 +206,11 @@ ProcessJoysticks: SUBROUTINE
 	LDX #$01		; Start with Player 1
 	LDA SWCHA		; and scan the joysticks.
 	EOR #$FF		; flip the bits.
-loop:	STA TEMP		; now contains sticks, pre-mask
+loop:	STA TEMP3		; now contains sticks, pre-mask
 	AND #$0F		; only deal with bottom 4 bits
 	TAY			; transfer to the Y for index
 	LDA JoyToDirTable,Y	; grab the desired vector
-	STA TEMP1		; now contains desired vector
+	STA TEMP2		; now contains desired vector
 	LDA INPT4,X		; scan fire button.
 	AND #$80
 	CMP #$80
@@ -223,14 +225,14 @@ fire:	LDA #$00
 	SEC
 	SBC #$08
 	STA BALLY0,X		; make ball Y
-	LDA TEMP1		; if fire pressed, load the desired velocity
+	LDA TEMP2		; if fire pressed, load the desired velocity
 	STA BALLD0,X		; store in the ball's desired motion vector.
 	LDA #$FF		; ... stop the player in their tracks.
 	STA PLAYERD0,X		; ...
 	LDA #$3F		; store initial decay.
 	STA DECAY0,X		;
 	BVC next		; and go to next player.
-nofire:	LDA TEMP1		; else, load the stored desired velocity.
+nofire:	LDA TEMP2		; else, load the stored desired velocity.
 	STA PLAYERD0,X		; store the new vector into player's direction.
 	LDA DECAY0,X		; Load decay
 	CMP #$00		; is ball dead?
@@ -242,7 +244,7 @@ nofire:	LDA TEMP1		; else, load the stored desired velocity.
 	BNE next		; no, go to next ball.
 	LDA #$FF		; make ball still
 	STA BALLD0,X	  	; and store.
-next:	LDA TEMP		; Re-grab saved SWCHA
+next:	LDA TEMP3		; Re-grab saved SWCHA
 	LSR			; and shift out the already processed bytes
 	LSR			;
 	LSR			;
@@ -280,21 +282,24 @@ XLoop:	LDA PLAYERX0,X
 PrepScore: SUBROUTINE
 	ldx #$01		; Go through loop, twice for each score.
 .loop:
-	lda SCORE,x		; Get BCD score (first P1, then P0)
-	and #$0F		; Mask off the upper nybble
-	sta TEMP		; and store the result temporarily.
-	asl			; * 2
-	asl			; * 4
-	adc TEMP		; and add the temp value back to get * 5
-	sta DIGITONES,x		; store the result into 
-	lda SCORE,x		; Get BCD score again (first P1, then P0)
-	and #$F0		; This time, mask off the lower nibble.
-	lsr			; / 2
-	lsr			; / 4
-	adc TEMP		; and now 5
-	sta DIGITTENS,x		; Store the result into the tens spot for (P1, then P0)
-	dex			; decrement X to do the P0 in the second pass
-	bpl .loop		; Only return if X < 0
+        lda SCORE,x     ; LoaD A with SCORE+1(first pass) or SCORE(second pass)
+        and #$0F        ; remove the tens digit
+        sta TEMP        ; Store A into TEMP
+        asl             ; Accumulator Shift Left (# * 2)
+        asl             ; Accumulator Shift Left (# * 4)
+        adc TEMP        ; ADd with Carry value in TEMP (# * 5)
+        sta DIGITONES,x  ; STore A in DIGITONES+1(first pass) or DIGITONES(second pass)
+        lda SCORE,x     ; LoaD A with SCORE+1(first pass) or SCORE(second pass)
+        and #$F0        ; remove the ones digit
+        lsr             ; Logical Shift Right (# / 2)
+        lsr             ; Logical Shift Right (# / 4)
+        sta TEMP        ; Store A into TEMP
+        lsr             ; Logical Shift Right (# / 8)
+        lsr             ; Logical Shift Right (# / 16)
+        adc TEMP        ; ADd with Carry value in TEMP ((# / 16) * 5)
+        sta DIGITTENS,x ; STore A in DIGITTENS+1(first pass) or DIGITTENS(second pass)
+        dex             ; DEcrement X by 1
+        bpl .loop    	; Branch PLus (positive) to PSFDloop
 	rts			; if we're done? return.
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -557,6 +562,42 @@ MxtoPL:	LDA CXM0P,X		; scan missile collision registers
 nextMxtoPL:
 	DEX			; decrement player/missile counter
 	BPL MxtoPL		; and branch back if we haven't taken care of P0/M0.
+
+	;;
+	;; Handle case when ball hits opposing player
+	;;
+
+	LDX #$01
+MxtoOP:	LDA CXM0P,X
+	AND #$80
+	CMP #$80
+	BNE nextMxtoOP
+	SED
+	CLC
+	LDA SCORE,X
+	ADC #$01
+	STA SCORE,X
+	CLD
+	SEC
+	LDA #$02
+	STA DECAY0,X
+	JSR RecallBallPosition
+	LDA BALLD0,X
+	ADC #$08
+	AND #$0F
+	STA BALLD0,X
+	AND #$03
+	BNE nextMxtoOP
+	INC BALLD0,X
+nextMxtoOP:
+	JSR SaveBallPosition
+	DEX
+	BPL MxtoOP
+
+	;;
+	;; Handle case when computer ball hits player
+	;;
+
 	
 	RTS			; else, return.
 
@@ -648,7 +689,7 @@ nextBall:
 	
 	RTS
 
-	;;
+;
 	;; This table is obviously shifted, come back here and collapse this.
 	;; 
 BallVectorX:
@@ -658,7 +699,7 @@ BallVectorY:
 	.byte $00, $FF, $FE, $FE, $FE, $FE, $FE, $FF, $00, $01, $02, $02, $02, $02, $02, $01
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ;; PosObject subroutine
+;;; ;; PObject subroutine
 ;;; ;; A = X Position of Object
 ;;; ;; X = Which object to position
 ;;; ;;
@@ -709,11 +750,11 @@ Sleep12:
 
 	align 256
 DigitGFX:
-        .byte %01110111
-        .byte %01010101
-        .byte %01010101
-        .byte %01010101
-        .byte %01110111
+        .byte %00000111
+        .byte %00000101
+        .byte %00000101
+        .byte %00000101
+        .byte %00000111
         
         .byte %00010001
         .byte %00010001
@@ -768,6 +809,12 @@ DigitGFX:
         .byte %01110111
         .byte %00010001
         .byte %01110111
+        
+        .byte %00000000     ; used to blank out right score in 1 player games
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
 
 GRP:
 	.byte %00000000
