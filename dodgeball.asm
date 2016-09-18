@@ -15,6 +15,7 @@
 ;;; Originally Started: 2016-06-01
 ;;; Suspended: 		2016-07-30
 ;;; Restarted:		2016-08-26
+;;; First Playable:	2016-09-18
 	
 	PROCESSOR 6502
 
@@ -626,95 +627,96 @@ nextMxtoOP:
 	;; 
 	
 MxToMxCollide:
-	BIT CXPPMM
-	BVC NextMxToMxCollide
-	LDX #$01
+	BIT CXPPMM		; Check P/P M/M collision
+	BVC NoMxToMxCollide	; If not, skip this whole routine.
+	LDX #$01		; if yes, set up to update both M1 and M0
 MxToMxCollideLoop:
-	JSR RecallBallPosition
-	LDA #$08
-	STA DECAY0,X
-	LDA BALLD0,X
-	ADC #$08
-	AND #$0F
-	STA BALLD0,X
-	AND #$03
-	BNE NextMxToMxCollide
-	INC BALLD0,X
+	JSR RecallBallPosition	; Recall the original ball position
+	LDA #$08		; decay now set to 8 frames
+	STA DECAY0,X		; for the current ball in the loop
+	LDA BALLD0,X		; get the ball vector
+	ADC #$08		; reflect it
+	AND #$0F		; mask off to a legal direction
+	STA BALLD0,X		; store the vector
+	AND #$03		; check for N/S/E/W...
+	BNE NextMxToMxCollide	; if not, skip past direction increment
+	INC BALLD0,X		; add an additional 22.5 degress of counterclockwise direction.
 NextMxToMxCollide:
-	JSR SaveBallPosition
-	DEX
-	BPL MxToMxCollideLoop
+	JSR SaveBallPosition	; Save the resulting ball position
+	DEX			; decrement X
+	BPL MxToMxCollideLoop	; and if X >= 0, loop back around for the next ball.
+NoMxToMxCollide:	
 
 	;;
 	;; When BL collides with P0 or P1
 	;;
 
-	LDX #$01
-BLtoPL:	LDA CXP0FB,X
-	AND #$40
-	CMP #$40
-	BNE nextBLtoPL
+	LDX #$01		; Start with P1
+BLtoPL:	LDA CXP0FB,X		; load next P/FB collision register
+	AND #$40		; Mask off only bit 6
+	CMP #$40		; is bit 6 set? (did we collide?)
+	BNE nextBLtoPL		; if not, skip to next player
 BLtoPLCollide:
-	LDA SCORE,X
-	CMP #$00
-	BEQ BLtoPLCollide0
-	SED
-	LDA SCORE,X
-	SBC #$01
-	STA SCORE,X
-	CLD
+	LDA SCORE,X		; Load current player's score.
+	CMP #$00		; is it already 0?
+	BEQ BLtoPLCollide0	; yes, just handle the collision
+	SED			; otherwise, set decimal mode
+	LDA SCORE,X		; load current score 
+	SBC #$01		; subtract 1
+	STA SCORE,X		; store it back
+	CLD			; clear decimal mode
 BLtoPLCollide0:
-	STX TEMP
-	LDX #$02
-	JSR RecallBallPosition
-	LDX TEMP
-	LDA BALLD2
-	ADC #$08
-	AND #$0F
-	STA BALLD2
-	AND #$03
-	BNE nextBLtoPL
-	INC BALLD2
+	STX TEMP		; temporarily store the X register
+	LDX #$02		; 02 = computer ball
+	JSR RecallBallPosition	; recall computer ball's last pre-collision position
+	LDX TEMP		; restore X from TEMP
+	LDA BALLD2		; get computer ball's direction.
+	ADC #$08		; reflect it
+	AND #$0F		; mask it off to legal direction
+	STA BALLD2		; and set the new direction.
+	AND #$03		; is it N/S/E/W ?
+	BNE nextBLtoPL		; if not, skip over next increment
+	INC BALLD2		; add 22.5 degrees counterclockwise to avoid lateral direction
 nextBLtoPL:
-	STX TEMP
-	LDX #$02
-	JSR SaveBallPosition
-	LDX TEMP
-	DEX
-	BPL BLtoPL
+	STX TEMP		; temporarily store X register
+	LDX #$02		; set computer ball 
+	JSR SaveBallPosition	; save its position.
+	LDX TEMP		; re-load X with temp
+	DEX			; decrement it
+	BPL BLtoPL		; and go back around if we haven't done the other ball.
 
 	;;
 	;; M0/M1 collides with BL
 	;;
 
-	LDX #$01
-MxToBL:	LDA CXM0FB,X
-	AND #$40
-	CMP #$40
-	BNE nextMxToBL
+	LDX #$01		; start with M1 (second ball)
+MxToBL:	LDA CXM0FB,X		; read collision register
+	AND #$40		; mask off all but bit 6
+	CMP #$40		; is bit 6 set?
+	BNE nextMxToBL		; no? loop around to check M0
 MxToBLCollide:
-	LDA BALLD2
-	ADC #$08
-	AND #$0F
-	STA BALLD2
-	AND #$03
-	BNE MxToBLCollide0
-	INC BALLD2
+	LDA BALLD2		; Load vector for computer ball
+	ADC #$08		; reflect it
+	AND #$0F		; mask into a legal direction.
+	STA BALLD2		; store the vector
+	AND #$03		; is it N/S/E/W ?
+	BNE MxToBLCollide0	; if not, don't increment the direction vector. deal with Mx ball
+	INC BALLD2		; it is, increment the computer's direction vector by 22.5 deg.
 MxToBLCollide0:	
-	LDA #$08
-	STA DECAY0,X
-	JSR RecallBallPosition
-	LDA BALLD0,X
-	ADC #$08
-	AND #$0F
-	STA BALLD0,X
-	AND #$03
-	BNE nextMxToBL
-	INC BALLD0,X
+	LDA #$08		; set Mx's ball to decay 8 frames from now.
+	STA DECAY0,X		; store it.
+	JSR RecallBallPosition	; recall pre-collision ball position
+	LDA BALLD0,X		; load current ball direction vector
+	ADC #$08		; reflect it.
+	AND #$0F		; mask to a legal value.
+	STA BALLD0,X		; and store it back.
+	AND #$03		; are we N/S/E/W ?
+	BNE nextMxToBL		; if not, don't increment ball vector
+	INC BALLD0,X		; otherwise, increment ball vector by 22.5 degrees.
 nextMxToBL:
-	JSR SaveBallPosition
-	DEX
-	BPL MxToBL
+	JSR SaveBallPosition	; Save the ball position
+	DEX			; decrement X
+	BPL MxToBL		; if X >= 0, go back around to the first ball.
 	
 colDone:
 	RTS			; else, return.
