@@ -93,14 +93,27 @@ BALLY0S:		ds 1	; Ball 0 Y (M0)
 BALLY1S:		ds 1	; Ball 1 Y (M1)
 BALLY2S:		ds 1	; Ball 2 Y (BL) Computer Ball
 
+	;;
+	;; Player/Ball direction vector, 0 is right, goes counterclockwise
+	;; in 22.5 degree increments
+	;; 
 PLAYERD0:		ds 1	; Player 0 Direction
 PLAYERD1:		ds 1	; Player 1 Direction
 BALLD0:			ds 1	; Ball 0 Direction
 BALLD1:			ds 1	; Ball 1 Direction
 BALLD2:			ds 1	; Ball 2 Direction
 
+	;;
+	;; Decay variables (00 means stop)
+	;; 
 DECAY0:			ds 1	; Ball 0 Decay
 DECAY1:			ds 1	; Ball 1 Decay (computer ball 2 has no decay)
+
+	;;
+	;; # of balls in hands
+	;; 
+BIH0:			ds 1	; # of balls in hands of P0	(0, 1, or 2)
+BIH1:			ds 1	; # of balls in hands of P1	(0, 1, or 2)
 	
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
@@ -206,6 +219,7 @@ ProcessJoysticks: SUBROUTINE
 	LDX #$01		; Start with Player 1
 	LDA SWCHA		; and scan the joysticks.
 	EOR #$FF		; flip the bits.
+	
 loop:	STA TEMP3		; now contains sticks, pre-mask
 	AND #$0F		; only deal with bottom 4 bits
 	TAY			; transfer to the Y for index
@@ -215,11 +229,17 @@ loop:	STA TEMP3		; now contains sticks, pre-mask
 	AND #$80
 	CMP #$80
 	BPL nofire		; if fire wasn't pressed, go to nofire
-fire:	LDA #$00
+fire:	LDA BIH0,X		; Check if at least one ball in hand
+	CMP #$00		; no balls in hand?
+	BEQ playerStill		; no balls, don't throw.
+	LDA DECAY0,X		; Check decay.
+	CMP #$00		; is it still?
+	BNE playerStill		; Player stay still.
+	LDA #$00
 	STA RESMP0,X		; Turn off missile center reset
 	LDA PLAYERX0,X		; load player X
 	CLC
-	ADC #$02
+	ADC #$03
 	STA BALLX0,X		; make ball X
 	LDA PLAYERY0,X		; load player Y
 	SEC
@@ -227,10 +247,12 @@ fire:	LDA #$00
 	STA BALLY0,X		; make ball Y
 	LDA TEMP2		; if fire pressed, load the desired velocity
 	STA BALLD0,X		; store in the ball's desired motion vector.
+	LDA #$3F		; Ball Decay now $3F
+	STA DECAY0,X		; ...
+	DEC BIH0,X		; one less ball in hand. (or maybe zero)
+playerStill:
 	LDA #$FF		; ... stop the player in their tracks.
 	STA PLAYERD0,X		; ...
-	LDA #$3F		; store initial decay.
-	STA DECAY0,X		;
 	BVC next		; and go to next player.
 nofire:	LDA TEMP2		; else, load the stored desired velocity.
 	STA PLAYERD0,X		; store the new vector into player's direction.
@@ -251,6 +273,7 @@ next:	LDA TEMP3		; Re-grab saved SWCHA
 	LSR			; 
 	DEX			; decrement player joystick index
 	BPL loop		; if we haven't processed 0, loop around
+	
 	RTS			; else, return.
 	
 JoyToDirTable:
@@ -559,6 +582,7 @@ MxtoPL:	LDA CXM0P,X		; scan missile collision registers
 	BNE nextMxtoPL
 	LDA #$02		; we collided, set bit 2
 	STA RESMP0,X		; and strobe RESMP0 to reset missile to center of player.
+	INC BIH0,X		; and one more ball into the hand.
 nextMxtoPL:
 	DEX			; decrement player/missile counter
 	BPL MxtoPL		; and branch back if we haven't taken care of P0/M0.
@@ -567,19 +591,117 @@ nextMxtoPL:
 	;; Handle case when ball hits opposing player
 	;;
 
+	LDX #$01		; Start with second player
+MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
+	AND #$80		; mask off bit 7
+	CMP #$80		; is it set?
+	BNE nextMxtoOP		; if not, check next ball.
+	LDA DECAY0,X		; if a legal collision, check decay.
+	CMP #$00		; is it 0?
+	BEQ nextMxtoOP		; if it's 0, then the ball is still, no points awarded.
+	SED			; else it is a legal hit, turn on decimal mode.
+	CLC			; clear the carry
+	LDA SCORE,X		; get current player's score.
+	ADC #$01		; add one to it.
+	STA SCORE,X		; store it back
+	CLD			; clear the decimal flag
+	SEC			; set the carry back (for the ball direction routines)
+	LDA #$08		; set the ball decay to the ball hit decay value
+	STA DECAY0,X		; store it so the ball will come to a halt, away from the player.
+	JSR RecallBallPosition	; PONG logic, recall ball position pre-collsion
+	LDA BALLD0,X		; get current ball direction
+	ADC #$08		; reflect it
+	AND #$0F		; mask it off to a legal direction
+	STA BALLD0,X		; store the new ball vector
+	AND #$03		; is it N/S/E/W?
+	BNE nextMxtoOP		; no? do next ball
+	INC BALLD0,X		; otherwise, add 22.5 deg to prevent lateral bounce.
+nextMxtoOP:
+	JSR SaveBallPosition	; save the now current ball position.
+	DEX			; decrement X for next player
+	BPL MxtoOP		; if >=0 then loop back around for the next player.
+
+	;;
+	;; When M0 and M1 balls hit each other.
+	;; 
+	
+MxToMxCollide:
+	BIT CXPPMM
+	BVC NextMxToMxCollide
 	LDX #$01
-MxtoOP:	LDA CXM0P,X
-	AND #$80
-	CMP #$80
-	BNE nextMxtoOP
-	SED
-	CLC
+MxToMxCollideLoop:
+	JSR RecallBallPosition
+	LDA #$08
+	STA DECAY0,X
+	LDA BALLD0,X
+	ADC #$08
+	AND #$0F
+	STA BALLD0,X
+	AND #$03
+	BNE NextMxToMxCollide
+	INC BALLD0,X
+NextMxToMxCollide:
+	JSR SaveBallPosition
+	DEX
+	BPL MxToMxCollideLoop
+
+	;;
+	;; When BL collides with P0 or P1
+	;;
+
+	LDX #$01
+BLtoPL:	LDA CXP0FB,X
+	AND #$40
+	CMP #$40
+	BNE nextBLtoPL
+BLtoPLCollide:
 	LDA SCORE,X
-	ADC #$01
+	CMP #$00
+	BEQ BLtoPLCollide0
+	SED
+	LDA SCORE,X
+	SBC #$01
 	STA SCORE,X
 	CLD
-	SEC
-	LDA #$02
+BLtoPLCollide0:
+	STX TEMP
+	LDX #$02
+	JSR RecallBallPosition
+	LDX TEMP
+	LDA BALLD2
+	ADC #$08
+	AND #$0F
+	STA BALLD2
+	AND #$03
+	BNE nextBLtoPL
+	INC BALLD2
+nextBLtoPL:
+	STX TEMP
+	LDX #$02
+	JSR SaveBallPosition
+	LDX TEMP
+	DEX
+	BPL BLtoPL
+
+	;;
+	;; M0/M1 collides with BL
+	;;
+
+	LDX #$01
+MxToBL:	LDA CXM0FB,X
+	AND #$40
+	CMP #$40
+	BNE nextMxToBL
+MxToBLCollide:
+	LDA BALLD2
+	ADC #$08
+	AND #$0F
+	STA BALLD2
+	AND #$03
+	BNE MxToBLCollide0
+	INC BALLD2
+MxToBLCollide0:	
+	LDA #$08
 	STA DECAY0,X
 	JSR RecallBallPosition
 	LDA BALLD0,X
@@ -587,18 +709,14 @@ MxtoOP:	LDA CXM0P,X
 	AND #$0F
 	STA BALLD0,X
 	AND #$03
-	BNE nextMxtoOP
+	BNE nextMxToBL
 	INC BALLD0,X
-nextMxtoOP:
+nextMxToBL:
 	JSR SaveBallPosition
 	DEX
-	BPL MxtoOP
-
-	;;
-	;; Handle case when computer ball hits player
-	;;
-
+	BPL MxToBL
 	
+colDone:
 	RTS			; else, return.
 
 	
@@ -662,7 +780,17 @@ doBall:
 
 	CPY #$FF		; $FF = do not move, stay still.
 	BEQ nextBall		; If so, skip this ball.
-	
+
+	;;
+	;; Apply Velocity delay if player.
+	;;
+	CPX #$02
+	BPL moveBall
+playerDelay:
+	LDA FRAME
+	AND #$01
+	BNE nextBall
+		
 	;;
 	;; Deal with Ball X
 	;; 
