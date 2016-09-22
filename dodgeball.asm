@@ -115,6 +115,9 @@ DECAY1:			ds 1	; Ball 1 Decay (computer ball 2 has no decay)
 	;; 
 BIH0:			ds 1	; # of balls in hands of P0	(0, 1, or 2)
 BIH1:			ds 1	; # of balls in hands of P1	(0, 1, or 2)
+
+BALLD0S:		ds 1	; auto ball vector from direction for P0
+BALLD1S:		ds 1	; auto ball vector from direction for P1
 	
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
@@ -249,7 +252,10 @@ fire:	LDA BIH0,X		; Check if at least one ball in hand
 	SBC #$08
 	STA BALLY0,X		; make ball Y
 	LDA TEMP2		; if fire pressed, load the desired velocity
-	STA BALLD0,X		; store in the ball's desired motion vector.
+	CMP #$FF		; is it still?
+	BNE fire0		; nope?
+	LDA BALLD0S,X		; load the saved potential ball vector.
+fire0:	STA BALLD0,X		; store in the ball's desired motion vector.
 	LDA #$3F		; Ball Decay now $3F
 	STA DECAY0,X		; ...
 	DEC BIH0,X		; one less ball in hand. (or maybe zero)
@@ -259,6 +265,10 @@ playerStill:
 	BVC next		; and go to next player.
 nofire:	LDA TEMP2		; else, load the stored desired velocity.
 	STA PLAYERD0,X		; store the new vector into player's direction.
+	CMP #$FF		; is it still?
+	BEQ nofire0		; yes, skip saving it.
+	STA BALLD0S,X	   	; store it for later. 
+nofire0:
 	LDA DECAY0,X		; Load decay
 	CMP #$00		; is ball dead?
 	BEQ next		; if so, go to next bal.
