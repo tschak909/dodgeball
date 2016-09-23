@@ -20,11 +20,11 @@
                                                    JSMESSLoader.mountFile("a2600.cfg",
                                                                           JSMESSLoader.fetchFile("Config File",
                                                                                                  "a2600.cfg")),
-                                                   JSMESSLoader.peripheral("cart", "dodgeball.bin")))
+                                                   JSMESSLoader.peripheral("cart", "dodgeball.bin"),
+                                                   JSMESSLoader.peripheral("joyport1","joy"),
+						   JSMESSLoader.peripheral("joyport2","joy")))
       emulator.setScale(3).start({ waitAfterDownloading: true });
     </script>
-
-  <input type="button" id="gofullscreen" value="Go Full Screen" />
 
   </body>
 </html>
