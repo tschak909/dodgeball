@@ -730,7 +730,7 @@ var Module = null;
                                            e.gamepad.index, e.gamepad.id);
                              });
 
-     document.getElementById("gofullscreen").addEventListener("click", this.requestFullScreen);
+     // document.getElementById("gofullscreen").addEventListener("click", this.requestFullScreen);
 
      var css_resolution, scale, aspectRatio;
      // right off the bat we set the canvas's inner dimensions to
