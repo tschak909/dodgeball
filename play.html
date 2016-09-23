@@ -1,0 +1,27 @@
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Dodgeball</title>
+  </head>
+  <body>
+    <canvas id="canvas" style="width: 50%; height: 50%; display: block; margin: 0 auto;"/>
+    <script type="text/javascript" src="es6-promise.js"></script>
+    <script type="text/javascript" src="browserfs.js"></script>
+    <script type="text/javascript" src="loader.js"></script>
+    <script type="text/javascript">
+      var emulator = new Emulator(document.querySelector("#canvas"),
+                                  null,
+                                  new JSMESSLoader(JSMESSLoader.driver("a2600"),
+                                                   JSMESSLoader.nativeResolution(352, 223),
+                                                   JSMESSLoader.emulatorJS("a2600.js"),
+                                                   JSMESSLoader.mountFile("dodgeball.bin",
+                                                                          JSMESSLoader.fetchFile("Game File",
+                                                                                                 "dodgeball.bin")),
+                                                   JSMESSLoader.mountFile("a2600.cfg",
+                                                                          JSMESSLoader.fetchFile("Config File",
+                                                                                                 "a2600.cfg")),
+                                                   JSMESSLoader.peripheral("cart", "dodgeball.bin")))
+      emulator.setScale(3).start({ waitAfterDownloading: true });
+    </script>
+  </body>
+</html>
