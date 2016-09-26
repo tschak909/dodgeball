@@ -50,6 +50,7 @@ FRAME			ds 1	; Frame counter
 SCANLINE:		ds 1	; temporarily stored scanline
 STOREDSTACKPTR:		ds 1	; Stored SP for kernel.
 GAMVAR:			ds 1	; Game Variation (0 indexed)
+GAMBCD:			ds 1	; Game Variation in BCD (1 indexed)
 GAMPFMODE:		ds 1	; Game PF mode
 TEMP:			ds 1	; temp variable.
 TEMP1:			ds 1	; Temp Variable 2.
@@ -57,7 +58,10 @@ TEMP2:			ds 1	; Temp Variable 3.
 TEMP3:			ds 1	; Temp Variable 4.
 CYCLE:			ds 1	; Color cycle.
 GAMESTATE:		ds 1	; Game State (00 = Not Playing, FF = Game on)
-
+GAMETIMER:		ds 1	; Game Timer ($80 to $FF when playing, $00 = off)
+RAND:			ds 1	; Random 8-bit number
+SELDBNCE:		ds 1	; Select debounce flag.
+	
 	;;
 	;; score variables
 	;; 
@@ -131,8 +135,21 @@ BALLD1S:		ds 1	; auto ball vector from direction for P1
 
 ColdStart:
 	CLEAN_START		; defined in macro.h
+
+LoadRand:
+	LDA INTIM		; Get the current timer value (unknown and therefore somewhat random)
+	STA RAND		; and use it to seed the random number generator.
 	
 	JSR GameReset		; Call Game Reset after cold start.
+	LDA #$00
+	STA GAMVAR
+	LDA #$01
+	STA GAMBCD
+	STA SCORE
+	LDA #$0A
+	STA SCORE+1
+	LDA #$00
+	STA GAMESTATE
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Main Loop
@@ -174,6 +191,8 @@ VBLNK:	SUBROUTINE
 	LDX GAMVAR		; Get Game Variation #
 	LDA VARTBL,X		; Get variation from table	
 	STA GAMPFMODE		; And store it in Game PF mode
+	JSR Random		; Get new random value.
+	JSR CheckSwitches	; Check switches.
 	JSR SetTIA		; Set TIA Registers
 	JSR ProcessJoysticks	; Process Joysticks
 	JSR BallDirection	; Compute ball directions
@@ -183,6 +202,13 @@ VBLNK:	SUBROUTINE
 	LDA INTIM		; Poll the timer
 	BNE .waitUntilDone	; and if not ready, loop back to wait.
 	RTS
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; Check switches
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+CheckSwitches:	SUBROUTINE
+	
+done:	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Set TIA Registers
@@ -343,6 +369,9 @@ PrepScore: SUBROUTINE
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 GameReset: SUBROUTINE
+	;;
+	;; First, set the players to their initial positions
+	;; 
 	LDA #$08
 	STA PLAYERX0
 	LDA #$8F
@@ -351,18 +380,26 @@ GameReset: SUBROUTINE
 	STA PLAYERY0
 	STA PLAYERY1
 
-	LDA #$3F
-	STA BALLX0
-	STA BALLY0
-
-	LDA #$75
-	STA BALLX1
-	STA BALLY1
+	;;
+	;; Then, set the ball positions.
+	;; 
+	LDX #$02
+ballSetLoop:
+	JSR Random		; Generate random number
+	LDA RAND		; grab generated random #
+	AND #$07		; mask off upper 4 bits (we only want 16 values)
+	TAY			; and use for the Y index
+	LDA PositionX,Y		; Get X position at index Y
+	STA BALLX0,X		; store in BALLx X position
+	LDA PositionY,Y		; Get Y position at index X
+	STA BALLY0,X		; store in BALLx Y position
+	DEX			; decrement loop counter
+	BPL ballSetLoop		; loop around if we're still greater than 0
 	
-	LDA #$70
-	STA BALLX2
-	STA BALLY2
-
+	;;
+	;; Then, set the ball velocities to be stopped
+	;;
+	
 	LDA #$FF
 	STA PLAYERD0
 	STA PLAYERD1
@@ -370,6 +407,13 @@ GameReset: SUBROUTINE
 	STA BALLD1
 	
 	RTS			; and return.
+
+PositionX:
+	byte $04,$4C,$4C,$4C,$7A,$8E,$90,$68
+
+PositionY:
+	byte $30,$8E,$54,$D6,$8E,$D8,$4C,$C0
+	
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Visible Screen Kernel
@@ -870,6 +914,18 @@ DivideLoop:
 	sta RESP0,X		; 4	23 - Set X position of object
 	rts			; 6 	29 - and done.
 
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; RANDOM - generate random 8-bit number
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+Random: SUBROUTINE
+	LDA RAND
+	LSR
+	BCC noeor
+	EOR #$B4
+noeor:	STA RAND
+	RTS
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Sleep 12 cycles (JSR & RTS)
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
