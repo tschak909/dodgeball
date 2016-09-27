@@ -173,6 +173,11 @@ MLOOP:	JSR VCNTRL		; Generate VSYNC; Enter VBLANK
 
 VCNTRL: SUBROUTINE
 	INC FRAME		; Increment master frame counter.
+	LDA FRAME
+	AND #$3F
+	BNE colrskip
+	DEC CYCLE
+colrskip:
 	STA HMCLR		; Clear motion registers.
 	LDA #$02		; D1 = 1
 	STA WSYNC		; Make sure we're at the beginning of a scanline, and...
@@ -343,6 +348,14 @@ GSdone:	LDA GAMBCD
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 SetTIA:	SUBROUTINE
+	LDA #$FF
+	STA TEMP2
+	AND CYCLE
+	BIT GAMESTATE
+	BPL GameOver
+	LDA #$00
+GameOver:
+	STA TEMP
 	LDA #$01		; XXX TEMPORARY
 	STA VDELP0		; XXX TEMPORARY (puts both players on same line)
 	LDA #$10
@@ -363,6 +376,8 @@ SetTIA:	SUBROUTINE
 	TAX			; X = A
 .setNextColor:		
 	LDA COLRTBL,X		; Get next entry from color table
+	EOR TEMP
+	AND TEMP2
 	STA COLUP0,Y		; set it.
 	DEX			; decrement table index
 	DEY			; decrement register index
