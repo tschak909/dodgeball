@@ -299,6 +299,8 @@ ballSetLoop:
 	LDA #$00		; Clear the score
 	STA SCORE		; 
 	STA SCORE+1		;
+	STA XSCORE
+	STA XSCORE+1
 	LDA #$80		; Reset the game timer.
 	STA GAMETIMER		; 
 	
@@ -1101,14 +1103,13 @@ Sleep12:
 
 	if (* & $FF)
 	  echo "----", [(>.+1)*256 - .]d, "bytes free before DigitGFX"
-	  align 256
+	  ;; align 256
 	endif
 
 	;;
 	;; digit graphics
 	;;
 
-	align 256
 DigitGFX:
         .byte %00000111
         .byte %00000101
@@ -1306,7 +1307,7 @@ InitialPosTbl:
 
 	if (* & $FF)
 		echo "----", [$FFFA-*]d, "bytes free before end of cart."
-		align 256
+		;; align 256
 	endif
 	
 	ORG $FFFA
