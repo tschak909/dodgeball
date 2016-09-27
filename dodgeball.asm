@@ -66,6 +66,7 @@ SELDBNCE:		ds 1	; Select debounce flag.
 	;; score variables
 	;; 
 SCORE:			ds 2	; Two player scores (BCD)
+XSCORE:			ds 2	; Two Player score (backup)
 SCOREGFX:		ds 2	; Current Score graphics for a given scanline.
 DIGITONES:		ds 2	; Holder for ones digit for p1/p0
 DIGITTENS:		ds 2	; holder for tens digit for p1/p0
@@ -208,6 +209,7 @@ VBLNK:	SUBROUTINE
 	JSR ProcessJoysticks	; Process Joysticks
 	JSR BallDirection	; Compute ball directions
 	JSR PositionObjects	; And Position Objects
+	JSR UpdateTimer		; Update master timer if game running
 	JSR PrepScore		; Prepare score for kernel display.
 .waitUntilDone:
 	LDA INTIM		; Poll the timer
@@ -477,6 +479,40 @@ XLoop:	LDA PLAYERX0,X
 	STA WSYNC
 	STA HMOVE
 	RTS			; otherwise, return.
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; UpdateTimer
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+UpdateTimer: SUBROUTINE
+	BIT GAMESTATE
+	BPL UTdone
+	LDA FRAME
+	AND #$3F
+	BNE FlashScore
+	INC GAMETIMER
+	LDA GAMETIMER
+	CMP #$00
+	BNE FlashScore
+	STA GAMESTATE
+FlashScore:
+	LDA GAMETIMER
+	AND GAMESTATE
+	CMP #$F0
+	BCC ScoreDrawn
+	LDA FRAME
+	AND #$30
+	BNE ScoreDrawn
+	LDY #$AA
+	STY SCORE
+	STY SCORE+1
+	JMP UTdone
+ScoreDrawn:
+	LDY XSCORE
+	STY SCORE
+	LDY XSCORE+1
+	STY SCORE+1
+UTdone:	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Prep score for kernel display
@@ -675,7 +711,7 @@ OSCAN:	SUBROUTINE
 	LDA INTIM
 	BNE .waitUntilDone
 	RTS
-
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; ProcessCollisions
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -753,6 +789,7 @@ MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	LDA SCORE,X		; get current player's score.
 	ADC #$01		; add one to it.
 	STA SCORE,X		; store it back
+	STA XSCORE,X
 	CLD			; clear the decimal flag
 	SEC			; set the carry back (for the ball direction routines)
 	LDA #$08		; set the ball decay to the ball hit decay value
@@ -812,6 +849,7 @@ BLtoPLCollide:
 	LDA SCORE,X		; load current score 
 	SBC #$01		; subtract 1
 	STA SCORE,X		; store it back
+	STA XSCORE,X
 	CLD			; clear decimal mode
 BLtoPLCollide0:
 	STX TEMP		; temporarily store the X register
