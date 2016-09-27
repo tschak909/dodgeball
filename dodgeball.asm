@@ -122,7 +122,13 @@ BIH1:			ds 1	; # of balls in hands of P1	(0, 1, or 2)
 
 BALLD0S:		ds 1	; auto ball vector from direction for P0
 BALLD1S:		ds 1	; auto ball vector from direction for P1
-	
+
+	;;
+	;; P0/P1 Difficulty, bit 7
+	;;
+
+P0DIFFICULTY:		ds 1	; P0 Difficulty switch
+P1DIFFICULTY:		ds 1	; P1 Difficulty switch
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -207,8 +213,130 @@ VBLNK:	SUBROUTINE
 ;;; ;; Check switches
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 CheckSwitches:	SUBROUTINE
+	LDA SWCHB		; Get Console switches
+	LSR			; Reset now in carry
+	BCS NoStart		; if C=1 then reset not depressed.
+	;; 
+	;; Start Pressed
+	;; 
+Start:	JSR GameReset
+	BVC done
+NoStart:
+	LSR			; Select now in carry
+	BCS NoSelect		; if 1, select wasn't pressed.
+	JSR GameSelect		; Handle game select.
+	BVC done
+NoSelect:			;
+	LDA #$00		; Clear select debounce delay
+	STA SELDBNCE	  	; ...
+	LSR			; D2 (not used) in carry
+	LSR			; D3 (color/BW) in carry (Handled by SetTIA)
+	LSR			; D4 (not used) in carry
+	LSR			; D5 (not used) in carry
 	
+	LDX #$01
+difficultyLoop:
+	LSR			; D6 P0 Difficulty in carry
+	BCS difficultyA		; if 0, difficulty is B, otherwise it's A
+difficultyA:
+	LDA #$00
+	STA P0DIFFICULTY,X
+	BPL nextDifficulty
+difficultyB:
+	LDA #$80
+	STA P0DIFFICULTY,X
+nextDifficulty:	
+	DEX
+	BPL difficultyLoop	
 done:	RTS
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; GameReset - Reset players to initial pos
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+GameReset: SUBROUTINE
+	;;
+	;; First, set the players to their initial positions
+	;; 
+	LDA #$08		; Set initial player positions (should be from table?)
+	STA PLAYERX0		;
+	LDA #$8F		;
+	STA PLAYERX1		;
+	LDA #$90		;
+	STA PLAYERY0		;
+	STA PLAYERY1		;
+
+	;;
+	;; Then, set the ball positions.
+	;; 
+	LDX #$02
+ballSetLoop:
+	JSR Random		; Generate random number
+	LDA RAND		; grab generated random #
+	AND #$07		; mask off upper 4 bits (we only want 16 values)
+	TAY			; and use for the Y index
+	LDA PositionX,Y		; Get X position at index Y
+	STA BALLX0,X		; store in BALLx X position
+	LDA PositionY,Y		; Get Y position at index X
+	STA BALLY0,X		; store in BALLx Y position
+	DEX			; decrement loop counter
+	BPL ballSetLoop		; loop around if we're still greater than 0
+		
+	LDA #$FF		; Players and balls should be still.
+	STA PLAYERD0		;
+	STA PLAYERD1		;
+	STA BALLD0		;
+	STA BALLD1		;
+	LDA #$FF		; FF = Game on
+	STA GAMESTATE		; Set game state
+	LDA #$00		; Clear the score
+	STA SCORE		; 
+	STA SCORE+1		;
+	LDA #$80		; Reset the game timer.
+	STA GAMETIMER		; 
+	
+	RTS			; and return.
+
+PositionX:
+	byte $04,$4C,$4C,$4C,$7A,$8E,$90,$68
+
+PositionY:
+	byte $30,$8E,$54,$D6,$8E,$D8,$4C,$C0
+
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; GameSelect - Handle Select Pressed
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+GameSelect:	SUBROUTINE
+	LDA #$00		; Set 0 to Gamestate to indicate no game playing
+	STA GAMESTATE		; ....
+	LDA SELDBNCE		; Get Select debounce timer
+	BEQ SelectOK		; If delay is over, select next variation.
+	DEC SELDBNCE		; Decrement the select debounce
+	JMP GSdone		; Leave game select.
+SelectOK:
+	LDA #$3F		; Set select debounce delay $3F
+	STA SELDBNCE		; ...
+	SED
+	LDA GAMBCD
+	CLC
+	ADC #$01
+	STA GAMBCD
+	CLD
+	LDA GAMVAR
+	CLC
+	ADC #$01
+	CMP #$02
+	BNE VarRST 
+	LDA #$01
+	STA GAMBCD
+	LDA #$00
+VarRST:	STA GAMVAR
+GSdone:	LDA GAMBCD
+	STA SCORE
+	LDA #$AA
+	STA SCORE+1
+	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Set TIA Registers
@@ -362,58 +490,7 @@ PrepScore: SUBROUTINE
         sta DIGITTENS,x ; STore A in DIGITTENS+1(first pass) or DIGITTENS(second pass)
         dex             ; DEcrement X by 1
         bpl .loop    	; Branch PLus (positive) to PSFDloop
-	rts			; if we're done? return.
-	
-;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ;; GameReset - Reset players to initial pos
-;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-GameReset: SUBROUTINE
-	;;
-	;; First, set the players to their initial positions
-	;; 
-	LDA #$08
-	STA PLAYERX0
-	LDA #$8F
-	STA PLAYERX1
-	LDA #$90
-	STA PLAYERY0
-	STA PLAYERY1
-
-	;;
-	;; Then, set the ball positions.
-	;; 
-	LDX #$02
-ballSetLoop:
-	JSR Random		; Generate random number
-	LDA RAND		; grab generated random #
-	AND #$07		; mask off upper 4 bits (we only want 16 values)
-	TAY			; and use for the Y index
-	LDA PositionX,Y		; Get X position at index Y
-	STA BALLX0,X		; store in BALLx X position
-	LDA PositionY,Y		; Get Y position at index X
-	STA BALLY0,X		; store in BALLx Y position
-	DEX			; decrement loop counter
-	BPL ballSetLoop		; loop around if we're still greater than 0
-	
-	;;
-	;; Then, set the ball velocities to be stopped
-	;;
-	
-	LDA #$FF
-	STA PLAYERD0
-	STA PLAYERD1
-	STA BALLD0
-	STA BALLD1
-	
-	RTS			; and return.
-
-PositionX:
-	byte $04,$4C,$4C,$4C,$7A,$8E,$90,$68
-
-PositionY:
-	byte $30,$8E,$54,$D6,$8E,$D8,$4C,$C0
-	
+	rts			; if we're done? return.	
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Visible Screen Kernel
