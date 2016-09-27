@@ -384,6 +384,21 @@ GameOver:
 	DEX			; decrement table index
 	DEY			; decrement register index
 	BPL .setNextColor	; loop around, until done
+.sound:
+	LDA FRAME
+	AND #$03
+	BNE TIAdone
+	LDA #$00
+	STA AUDV0
+	STA AUDV1
+	LDA #$02
+	STA AUDC0
+	LDA #$02
+	STA AUDF0
+	LDA #$01
+	STA AUDC1
+	
+TIAdone:
 	RTS			; then return.
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -394,6 +409,7 @@ ProcessJoysticks: SUBROUTINE
 	LDX #$01		; Start with Player 1
 	LDA SWCHA		; and scan the joysticks.
 	EOR #$FF		; flip the bits.
+	AND GAMESTATE		; If not in game mode, turn off all joystick movement
 	
 loop:	STA TEMP3		; now contains sticks, pre-mask
 	AND #$0F		; only deal with bottom 4 bits
@@ -446,6 +462,7 @@ nofire0:
 	SEC			; otherwise...
 	SBC #$01		; subtract one from ball's decay counter.
 	STA DECAY0,X		; and store.
+	NOP
 	CMP #$00		; did we just die?
 	BNE next		; no, go to next ball.
 	LDA #$FF		; make ball still
@@ -740,6 +757,9 @@ BLtoPF:
 	LDA CXM0FB,X		; Read collision
 	BPL nextBLtoPF		; if collision didn't happen, skip to next ball.
 BLtoPFCollide:
+	LDA #$01
+	AND GAMESTATE
+	STA AUDV0
 	JSR RecallBallPosition	; otherwise, recall the previous ball position
 	LDA BALLD0,X		; Load the requested direction vector
 	ADC #$08		; reflect it (the carry will add an additional 22.5 deg)
@@ -784,6 +804,9 @@ MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	LDA DECAY0,X		; if a legal collision, check decay.
 	CMP #$00		; is it 0?
 	BEQ nextMxtoOP		; if it's 0, then the ball is still, no points awarded.
+	LDA #$03
+	AND GAMESTATE
+	STA AUDV0
 	SED			; else it is a legal hit, turn on decimal mode.
 	CLC			; clear the carry
 	LDA SCORE,X		; get current player's score.
@@ -816,6 +839,9 @@ MxToMxCollide:
 	BVC NoMxToMxCollide	; If not, skip this whole routine.
 	LDX #$01		; if yes, set up to update both M1 and M0
 MxToMxCollideLoop:
+	LDA #$03
+	AND GAMESTATE
+	STA AUDV0,X
 	JSR RecallBallPosition	; Recall the original ball position
 	LDA #$08		; decay now set to 8 frames
 	STA DECAY0,X		; for the current ball in the loop
@@ -842,6 +868,9 @@ BLtoPL:	LDA CXP0FB,X		; load next P/FB collision register
 	CMP #$40		; is bit 6 set? (did we collide?)
 	BNE nextBLtoPL		; if not, skip to next player
 BLtoPLCollide:
+	LDA #$03
+	AND GAMESTATE
+	STA AUDV0
 	LDA SCORE,X		; Load current player's score.
 	CMP #$00		; is it already 0?
 	BEQ BLtoPLCollide0	; yes, just handle the collision
@@ -881,6 +910,9 @@ MxToBL:	LDA CXM0FB,X		; read collision register
 	CMP #$40		; is bit 6 set?
 	BNE nextMxToBL		; no? loop around to check M0
 MxToBLCollide:
+	LDA #$03
+	AND GAMESTATE
+	STA AUDV0
 	LDA BALLD2		; Load vector for computer ball
 	ADC #$08		; reflect it
 	AND #$0F		; mask into a legal direction.
