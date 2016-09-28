@@ -136,6 +136,14 @@ BALLD1S:		ds 1	; auto ball vector from direction for P1
 
 P0DIFFICULTY:		ds 1	; P0 Difficulty switch
 P1DIFFICULTY:		ds 1	; P1 Difficulty switch
+
+	;; 
+	;; PF0, PF1, PF2 ptrs
+	;;
+
+PF0PTR:			ds 2	; PF0 Pointer
+PF1PTR:			ds 2	; PF1 Pointer
+PF2PTR:			ds 2	; PF2 Pointer
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
 	
@@ -350,7 +358,7 @@ GameSelect:	SUBROUTINE
 	LDA SELDBNCE		; Get Select debounce timer
 	BEQ SelectOK		; If delay is over, select next variation.
 	DEC SELDBNCE		; Decrement the select debounce
-	JMP GSdone		; Leave game select.
+	JMP GSSetScore		; Leave game select.
 SelectOK:
 	LDA #$3F		; Set select debounce delay $3F
 	STA SELDBNCE		; ...
@@ -369,10 +377,13 @@ SelectOK:
 	STA GAMBCD
 	LDA #$00
 VarRST:	STA GAMVAR
-GSdone:	LDA GAMBCD
+GSSetScore:
+	LDA GAMBCD
 	STA SCORE
 	LDA #$AA
 	STA SCORE+1
+GSSetPF:
+	
 	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -663,6 +674,11 @@ KERNEL:	SUBROUTINE
 	STX STOREDSTACKPTR
 	STA WSYNC
 
+	;;
+	;; Currently a timing bug in kernel causing graphic glitch
+	;; on top right border.
+	;;
+	
 .mainLoop:			; X	33
 	LDX #ENABL		; 2	35
 	TXS			; 2	37
@@ -670,20 +686,20 @@ KERNEL:	SUBROUTINE
 	LSR			; 2	42
 	LSR			; 2	44
 	LSR			; 2	46
-	TAY			; 2	48
+	STA TEMP
 	LDA PLAYERY0		; 3	51
 	SBC SCANLINE		; 3	54
 	AND #$FE		; 2	56
-	TAX			; 2	58
+	TAY			; 2	58
 	AND #$F0		; 2 	60
 	BEQ .doP0		; 2	62
 	LDA #$00		; 2	64
 	BEQ .noP0		; 3 jmp 67
 .doP0:				; X	63
-	LDA GRPA,X		; 4	67
+	LDA (PLAYERP0),Y	; 4	67
 .noP0:				; X	67
 	LDX SCANLINE		; 3	70
-	STA WSYNC		; 3	--
+	LDY TEMP		; 3	--
 	STA GRP0		; 3	3
 	TXA			; 2	5
 	EOR BALLY2		; 3	8
@@ -695,7 +711,6 @@ KERNEL:	SUBROUTINE
 	STA PF1			; 3	27
 	LDA PF2_0-6,Y		; 4	31
 	STA PF2			; 3	34
-	STY TEMP		; 3	37
 	INX			; 2	39
 	LDA PLAYERY1		; 3	42
 	SBC SCANLINE		; 3	45
@@ -707,7 +722,7 @@ KERNEL:	SUBROUTINE
 	BEQ .noP1		; 3	58
 
 .doP1:				; X	54
-	LDA GRPA,Y		; 4	58
+	LDA (PLAYERP1),Y	; 4	58
 .noP1:
 	STA WSYNC		; 3	--
 	STA GRP1		; 3	3
@@ -841,6 +856,7 @@ MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	CLC			; clear the carry
 	LDA SCORE,X		; get current player's score.
 	ADC #$01		; add one to it.
+	AND GAMESTATE		; mask against game state
 	STA SCORE,X		; store it back
 	STA XSCORE,X
 	CLD			; clear the decimal flag
@@ -907,6 +923,7 @@ BLtoPLCollide:
 	SED			; otherwise, set decimal mode
 	LDA SCORE,X		; load current score 
 	SBC #$01		; subtract 1
+	AND GAMESTATE
 	STA SCORE,X		; store it back
 	STA XSCORE,X
 	CLD			; clear decimal mode
@@ -1244,6 +1261,7 @@ GRPA:	.byte %00000000
 	;; Playfield Data
 	;;
 
+	
 PF0_0:   ; PF0 is drawn in reverse order, and only the upper nybble
         .byte %11110000
         .byte %00010000
