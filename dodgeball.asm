@@ -309,6 +309,10 @@ GameReset: SUBROUTINE
 	STA PLAYERY0		;
 	STA PLAYERY1		;
 
+	LDA #$00		; Set RESMP0/1 to 0
+	STA RESMP0		; To let the missiles go free from the player
+	STA RESMP1		; for the reset.
+	
 	;;
 	;; Then, set the ball positions.
 	;; 
