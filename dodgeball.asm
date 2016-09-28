@@ -86,6 +86,12 @@ BALLY1:			ds 1	; Ball 1 Y (M1)
 BALLY2:			ds 1	; Ball 2 Y (BL) Computer Ball
 
 	;;
+	;; Player pointers for (ind),Y
+	;; 
+PLAYERP0:		ds 2	; Player 0 Ptr
+PLAYERP1:		ds 2	; Player 1 Ptr
+	
+	;;
 	;; position variables (last known good)
 	;; 
 PLAYERX0S:		ds 1	; Player 0 X
@@ -234,27 +240,49 @@ NoStart:
 	JSR GameSelect		; Handle game select.
 	BVC done
 NoSelect:			;
-	LDA #$00		; Clear select debounce delay
-	STA SELDBNCE	  	; ...
+	LDY #$00		; Clear select debounce delay
+	STY SELDBNCE	  	; ...
 	LSR			; D2 (not used) in carry
 	LSR			; D3 (color/BW) in carry (Handled by SetTIA)
 	LSR			; D4 (not used) in carry
 	LSR			; D5 (not used) in carry
+
+P0Diff:	LSR
+	BCS P0DiffA
+P0DiffB:
+	LDY #$80
+	STY P0DIFFICULTY
+	LDY #<GRPA
+	STY PLAYERP0
+	LDY #>GRPA
+	STY PLAYERP0+1
+	JMP P1Diff
+P0DiffA:
+	LDY #$00
+	STY P0DIFFICULTY
+	LDY #<GRP
+	STY PLAYERP0
+	LDY #>GRP
+	STY PLAYERP0+1
+
+P1Diff:	LSR
+	BCS P1DiffA
+P1DiffB:
+	LDY #$80
+	STY P1DIFFICULTY
+	LDY #<GRPA
+	STY PLAYERP1
+	LDY #>GRPA
+	STY PLAYERP1+1
+	JMP done
+P1DiffA:
+	LDY #$00
+	STY P1DIFFICULTY
+	LDY #<GRP
+	STY PLAYERP1
+	LDY #>GRP
+	STY PLAYERP1+1
 	
-	LDX #$01
-difficultyLoop:
-	LSR			; D6 P0 Difficulty in carry
-	BCS difficultyA		; if 0, difficulty is B, otherwise it's A
-difficultyA:
-	LDA #$00
-	STA P0DIFFICULTY,X
-	BPL nextDifficulty
-difficultyB:
-	LDA #$80
-	STA P0DIFFICULTY,X
-nextDifficulty:	
-	DEX
-	BPL difficultyLoop	
 done:	RTS
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -652,7 +680,7 @@ KERNEL:	SUBROUTINE
 	LDA #$00		; 2	64
 	BEQ .noP0		; 3 jmp 67
 .doP0:				; X	63
-	LDA GRP,X		; 4	67
+	LDA GRPA,X		; 4	67
 .noP0:				; X	67
 	LDX SCANLINE		; 3	70
 	STA WSYNC		; 3	--
@@ -679,7 +707,7 @@ KERNEL:	SUBROUTINE
 	BEQ .noP1		; 3	58
 
 .doP1:				; X	54
-	LDA GRP,Y		; 4	58
+	LDA GRPA,Y		; 4	58
 .noP1:
 	STA WSYNC		; 3	--
 	STA GRP1		; 3	3
@@ -1195,7 +1223,23 @@ GRP:
 	.byte %00000000
 	.byte %00000000
 
-	
+GRPA:	.byte %00000000
+	.byte %00000000
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %01111110
+	.byte %00000000
+	.byte %00000000
+
 	;;
 	;; Playfield Data
 	;;
