@@ -490,8 +490,8 @@ fire:	LDA BIH0,X		; Check if at least one ball in hand
 	LDA DECAY0,X		; Check decay.
 	CMP #$00		; is it still?
 	BNE playerStill		; Player stay still.
-	CMP #$3F		; is it in motion?
-	BCS playerStill		; player is still still ,but do not reset decay.
+	;; CMP #$3F		; is it in motion?
+	;; BCS playerStill		; player is still still ,but do not reset decay.
 	LDA #$00
 	STA RESMP0,X		; Turn off missile center reset
 	LDA PLAYERX0,X		; load player X
@@ -507,7 +507,14 @@ fire:	LDA BIH0,X		; Check if at least one ball in hand
 	BNE fire0		; nope?
 	LDA BALLD0S,X		; load the saved potential ball vector.
 fire0:	STA BALLD0,X		; store in the ball's desired motion vector.
-	LDA #$3F		; Ball Decay now $3F
+	LDA P0DIFFICULTY,X	; Load current player difficulty.
+	BPL PJDiffA
+PJDiffB:
+	LDA #$3F
+	BPL PJStoreDecay
+PJDiffA:
+	LDA #$1F		; Ball Decay now $3F
+PJStoreDecay:	
 	STA DECAY0,X		; ...
 	DEC BIH0,X		; one less ball in hand. (or maybe zero)
 playerStill:
