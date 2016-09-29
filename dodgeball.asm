@@ -172,6 +172,23 @@ LoadRand:
 	LDA #$00
 	STA GAMESTATE
 
+	;;
+	;; Set up initial playfield pointers.
+	;;
+	
+	LDA #<PFData0-6
+	STA PF0PTR
+	LDA #>PFData0
+	STA PF0PTR+1
+	LDA #<PFData1-6
+	STA PF1PTR
+	LDA #>PFData1
+	STA PF1PTR+1
+	LDA #<PFData2-6
+	STA PF2PTR
+	LDA #>PFData2
+	STA PF2PTR+1
+	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; Main Loop
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -384,8 +401,10 @@ VarRST:	STA GAMVAR
 GSSetScore:
 	LDA GAMBCD
 	STA SCORE
+	STA XSCORE
 	LDA #$AA
 	STA SCORE+1
+	STA XSCORE+1
 GSSetPF:
 	
 	RTS
@@ -709,11 +728,11 @@ KERNEL:	SUBROUTINE
 	EOR BALLY2		; 3	8
 	AND #$FC		; 2	10
 	PHP			; 3	13
-	LDA PF0_0-6,Y		; 4	17
+	LDA (PF0PTR),Y		; 4	17
 	STA PF0			; 3	20
-	LDA PF1_0-6,Y		; 4	24
+	LDA (PF1PTR),Y		; 4	24
 	STA PF1			; 3	27
-	LDA PF2_0-6,Y		; 4	31
+	LDA (PF2PTR),Y		; 4	31
 	STA PF2			; 3	34
 	INX			; 2	39
 	LDA PLAYERY1		; 3	42
@@ -861,10 +880,12 @@ MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	LDA SCORE,X		; get current player's score.
 	ADC #$01		; add one to it.
 	AND GAMESTATE		; mask against game state
+	BEQ MxtoOPScoreBypass
 	STA SCORE,X		; store it back
 	STA XSCORE,X
 	CLD			; clear the decimal flag
 	SEC			; set the carry back (for the ball direction routines)
+MxtoOPScoreBypass:
 	LDA #$08		; set the ball decay to the ball hit decay value
 	STA DECAY0,X		; store it so the ball will come to a halt, away from the player.
 	JSR RecallBallPosition	; PONG logic, recall ball position pre-collsion
@@ -925,13 +946,15 @@ BLtoPLCollide:
 	CMP #$00		; is it already 0?
 	BEQ BLtoPLCollide0	; yes, just handle the collision
 	SED			; otherwise, set decimal mode
-	LDA SCORE,X		; load current score 
+	LDA SCORE,X		; load current score
+	SEC
 	SBC #$01		; subtract 1
 	AND GAMESTATE
+	BEQ BLtoPLCollide0
 	STA SCORE,X		; store it back
 	STA XSCORE,X
-	CLD			; clear decimal mode
 BLtoPLCollide0:
+	CLD
 	STX TEMP		; temporarily store the X register
 	LDX #$02		; 02 = computer ball
 	JSR RecallBallPosition	; recall computer ball's last pre-collision position
@@ -1341,6 +1364,82 @@ PF2_0:   ; PF2 is drawn in reverse order
         .byte %10000000
         .byte %11111111       
 
+
+PFData0
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+PFData1
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
+PFData2
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
+
+	
+	
 PFOFFSET:
 	.byte $00
 	
