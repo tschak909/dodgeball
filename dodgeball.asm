@@ -880,13 +880,29 @@ nextMxtoPL:
 	;;
 
 	LDX #$01		; Start with second player
+	TXA			; A=X
+	EOR #$FF		; Flip bits
+	AND #$01		; and mask everything off but bit 1, so we get opposing player.
+	TAY			; Y=A, so now Y has opposite player.
 MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	AND #$80		; mask off bit 7
 	CMP #$80		; is it set?
 	BNE nextMxtoOP		; if not, check next ball.
 	LDA DECAY0,X		; if a legal collision, check decay.
 	CMP #$00		; is it 0?
-	BEQ nextMxtoOP		; if it's 0, then the ball is still, no points awarded.
+	BNE MxtoOPscore		; if it's 0, then the ball is still, no points awarded.
+MxtoOPcatch:
+	LDA #$02
+	STA RESMP0,X
+	LDA OPBALL0,Y
+	ORA #$80
+	STA OPBALL0,Y
+	LDA BIH0,Y
+	CLC
+	ADC #$01
+	STA BIH0,Y
+	BPL nextMxtoOP		; unconditional branch due to sign flag being set.
+MxtoOPscore:	
 	LDA #$03
 	AND GAMESTATE
 	STA AUDV0
@@ -1190,7 +1206,7 @@ Sleep12:
 
 	if (* & $FF)
 	  echo "----", [(>.+1)*256 - .]d, "bytes free before DigitGFX"
-	  ;; align 256
+	  align 256
 	endif
 
 	;;
@@ -1304,78 +1320,80 @@ GRPA:	.byte %00000000
 	;;
 
 	
+
 PFData0
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00110000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
-        .byte #%00010000
+	.byte #%11110000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00110000
+	.byte #%00110000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%00010000
+	.byte #%11110000
 PFData1
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%10000000
-        .byte #%01000000
-        .byte #%00100000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00001111
-        .byte #%00011111
-        .byte #%01111111
-        .byte #%00011111
-        .byte #%00001111
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00100000
-        .byte #%01000000
-        .byte #%10000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
+	.byte #%11111111
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000010
+	.byte #%00000010
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000010
+	.byte #%00000010
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%11111111
 PFData2
-        .byte #%11100000
-        .byte #%11000000
-        .byte #%10000000
-        .byte #%00000000
-        .byte #%00001000
-        .byte #%00000100
-        .byte #%00000010
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000001
-        .byte #%00000111
-        .byte #%00000001
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000000
-        .byte #%00000010
-        .byte #%00000100
-        .byte #%00001000
-        .byte #%00000000
-        .byte #%10000000
-        .byte #%11000000
-        .byte #%11100000
+	.byte #%11111111
+	.byte #%10000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00001100
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%00000000
+	.byte #%10000000
+	.byte #%11111111
+	
 	
 PFOFFSET:
 	.byte $00
