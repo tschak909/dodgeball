@@ -880,11 +880,11 @@ nextMxtoPL:
 	;;
 
 	LDX #$01		; Start with second player
-	TXA			; A=X
+MxtoOP:	TXA			; A=X
 	EOR #$FF		; Flip bits
 	AND #$01		; and mask everything off but bit 1, so we get opposing player.
 	TAY			; Y=A, so now Y has opposite player.
-MxtoOP:	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
+	LDA CXM0P,X		; Check bit 7 of CXM0P (optimize)
 	AND #$80		; mask off bit 7
 	CMP #$80		; is it set?
 	BNE nextMxtoOP		; if not, check next ball.
