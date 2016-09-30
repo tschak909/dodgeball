@@ -498,8 +498,6 @@ fire:	LDA BIH0,X		; Check if at least one ball in hand
 	LDA DECAY0,X		; Check decay.
 	CMP #$00		; is it still?
 	BNE playerStill		; Player stay still.
-	;; CMP #$3F		; is it in motion?
-	;; BCS playerStill		; player is still still ,but do not reset decay.
 	LDA #$00
 	STA RESMP0,X		; Turn off missile center reset
 	LDA PLAYERX0,X		; load player X
