@@ -151,6 +151,9 @@ PF2PTR:			ds 2	; PF2 Pointer
 
 OPBALL0:		ds 1	; does P0 have P1's ball? (bit 7)
 OPBALL1:		ds 1	; does P1 have P0's ball? (bit 7)
+
+DEBOUNCE0:		ds 1	; debounce for P0
+DEBOUNCE1:	 	ds 1	; debounce for P1
 	
 	
 	echo "----", [$FA-*]d, "bytes before end of RAM"
@@ -237,7 +240,7 @@ colrskip:
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 VBLNK:	SUBROUTINE
-	LDA #$42		; D1 = 1
+	LDA #$02		; D1 = 1
 	STA VBLANK		; Start VBLANK
 	LDX GAMVAR		; Get Game Variation #
 	LDA VARTBL,X		; Get variation from table	
@@ -486,33 +489,52 @@ ProcessJoysticks: SUBROUTINE
 loop:	STA TEMP3		; now contains sticks, pre-mask
 	AND #$0F		; only deal with bottom 4 bits
 	TAY			; transfer to the Y for index
-	LDA JoyToDirTable,Y	; grab the desired vector
+	LDA JoyToDirTable,Y	; grab the desired vector (Y is now free)
 	STA TEMP2		; now contains desired vector
-	LDA INPT4,X		; scan fire button.
+	TXA			;
+	TAY			; for now X and Y are the same
+	LDA OPBALL0,X
+	BPL noOP
+	TYA
+	EOR #$FF
+	AND #$01
+	TAY
+noOP:	LDA INPT4,X		; scan fire button.
 	AND #$80
 	CMP #$80
 	BPL nofire		; if fire wasn't pressed, go to nofire
-fire:	LDA BIH0,X		; Check if at least one ball in hand
+fire:	LDA DEBOUNCE0,X
+	BMI next	
+fire00:	LDA #$80
+	STA DEBOUNCE0,X
+	LDA DECAY0,Y
+	CMP #$00
+	BEQ fire01
+	TYA
+	EOR #$FF
+	AND #$01
+	TAY
+fire01:	LDA BIH0,X		; Check if at least one ball in hand
 	CMP #$00		; no balls in hand?
 	BEQ playerStill		; no balls, don't throw.
 	LDA DECAY0,X		; Check decay.
 	CMP #$00		; is it still?
 	BNE playerStill		; Player stay still.
 	LDA #$00
-	STA RESMP0,X		; Turn off missile center reset
+	STA RESMP0,Y		; Turn off missile center reset
 	LDA PLAYERX0,X		; load player X
 	CLC
 	ADC #$03
-	STA BALLX0,X		; make ball X
+	STA BALLX0,Y		; make ball X
 	LDA PLAYERY0,X		; load player Y
 	SEC
 	SBC #$08
-	STA BALLY0,X		; make ball Y
+	STA BALLY0,Y		; make ball Y
 	LDA TEMP2		; if fire pressed, load the desired velocity
 	CMP #$FF		; is it still?
 	BNE fire0		; nope?
 	LDA BALLD0S,X		; load the saved potential ball vector.
-fire0:	STA BALLD0,X		; store in the ball's desired motion vector.
+fire0:	STA BALLD0,Y		; store in the ball's desired motion vector.
 	LDA P0DIFFICULTY,X	; Load current player difficulty.
 	BPL PJDiffA
 PJDiffB:
@@ -521,13 +543,15 @@ PJDiffB:
 PJDiffA:
 	LDA #$1F		; Ball Decay now $3F
 PJStoreDecay:	
-	STA DECAY0,X		; ...
-	DEC BIH0,X		; one less ball in hand. (or maybe zero)
+	STA DECAY0,Y		; ...
+	DEC BIH0,X		;
 playerStill:
 	LDA #$FF		; ... stop the player in their tracks.
 	STA PLAYERD0,X		; ...
 	BVC next		; and go to next player.
-nofire:	LDA TEMP2		; else, load the stored desired velocity.
+nofire:	LDA #$00
+	STA DEBOUNCE0,X
+	LDA TEMP2		; else, load the stored desired velocity.
 	STA PLAYERD0,X		; store the new vector into player's direction.
 	CMP #$FF		; is it still?
 	BEQ nofire0		; yes, skip saving it.
@@ -544,15 +568,23 @@ nofire0:
 	BNE next		; no, go to next ball.
 	LDA #$FF		; make ball still
 	STA BALLD0,X	  	; and store.
+	TYA
+	EOR #$FF
+	AND #$01
+	TAY
+	LDA #$00
+	STA OPBALL0,Y
 next:	LDA TEMP3		; Re-grab saved SWCHA
 	LSR			; and shift out the already processed bytes
 	LSR			;
 	LSR			;
 	LSR			; 
 	DEX			; decrement player joystick index
-	BPL loop		; if we haven't processed 0, loop around
+	BPL loop0		; if we haven't processed 0, loop around
 	
 	RTS			; else, return.
+
+loop0:	JMP loop		; Because our branch is just a bit too big. grrr..
 	
 JoyToDirTable:
 	.BYTE $FF, $04, $0C, $FF, $08, $06, $0A, $FF, $00, $02, $0E, $FF, $FF, $FF, $FF, $FF
@@ -927,7 +959,9 @@ MxtoOPcatch:
 	ADC #$01
 	STA BIH0,Y
 	BPL nextMxtoOP		; unconditional branch due to sign flag being set.
-MxtoOPscore:	
+MxtoOPscore:
+	LDA OPBALL0,Y
+	BMI nextMxtoOP
 	LDA #$03
 	AND GAMESTATE
 	STA AUDV0
