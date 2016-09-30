@@ -861,17 +861,44 @@ nextBLtoPF:
 	;;
 	
 	LDX #$01		; start with player ball
-MxtoPL:	LDA CXM0P,X		; scan missile collision registers
+MxtoPL:	TXA
+	EOR #$FF
+	AND #$01
+	TAY
+	LDA CXM0P,X		; scan missile collision registers
 	AND #$40
 	CMP #$40
 	BNE nextMxtoPL		; go to next ball, if player didn't collide with ball.
 	LDA DECAY0,X
 	CMP #$00
-	BNE nextMxtoPL
+	BNE MxtoPLOP
 	LDA #$02		; we collided, set bit 2
 	STA RESMP0,X		; and strobe RESMP0 to reset missile to center of player.
 	INC BIH0,X		; and one more ball into the hand.
+MxtoPLOP:
+	LDA OPBALL0,Y
+	BPL nextMxtoPL
+MxtoPLOPCollide:
+	AND #$80		; no longer the opponent's ball.
+	SED
+	LDA SCORE,Y
+	ADC #$01
+	STA SCORE,Y
+	STA XSCORE,Y
+	CLD
+	SEC
+	LDA #$08
+	STA DECAY0,X
+	JSR RecallBallPosition
+	LDA BALLD0,X
+	ADC #$08
+	AND #$0F
+	STA BALLD0,X
+	AND #$03
+	BNE nextMxtoPL
+	INC BALLD0,X
 nextMxtoPL:
+	JSR SaveBallPosition
 	DEX			; decrement player/missile counter
 	BPL MxtoPL		; and branch back if we haven't taken care of P0/M0.
 
