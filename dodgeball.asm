@@ -1,4 +1,4 @@
-00;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;      _           _            _           _ _
 ;;;     | |         | |          | |         | | | 
 ;;;   __| | ___   __| | __ _  ___| |__   __ _| | |
@@ -187,17 +187,17 @@ LoadRand:
 	;; Set up initial playfield pointers.
 	;;
 	
-	LDA #<PFData0-6
+	LDA #<PF0_0-6
 	STA PF0PTR
-	LDA #>PFData0
+	LDA #>PF0_0
 	STA PF0PTR+1
-	LDA #<PFData1-6
+	LDA #<PF1_0-6
 	STA PF1PTR
-	LDA #>PFData1
+	LDA #>PF1_0
 	STA PF1PTR+1
-	LDA #<PFData2-6
+	LDA #<PF2_0-6
 	STA PF2PTR
-	LDA #>PFData2
+	LDA #>PF2_0
 	STA PF2PTR+1
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -245,6 +245,20 @@ VBLNK:	SUBROUTINE
 	LDX GAMVAR		; Get Game Variation #
 	LDA VARTBL,X		; Get variation from table	
 	STA GAMPFMODE		; And store it in Game PF mode
+	AND #$03		; Get playfield bits
+	TAX
+	LDA PFDATA,X
+	STA PF0PTR
+	LDA PFDATA1,X
+	STA PF0PTR+1
+	LDA PFDATA2,X
+	STA PF1PTR
+	LDA PFDATA3,X
+	STA PF1PTR+1
+	LDA PFDATA4,X
+	STA PF2PTR
+	LDA PFDATA5,X
+	STA PF2PTR+1
 	JSR Random		; Get new random value.
 	JSR CheckSwitches	; Check switches.
 	JSR SetTIA		; Set TIA Registers
@@ -356,7 +370,8 @@ ballSetLoop:
 	STA BALLY0,X		; store in BALLx Y position
 	DEX			; decrement loop counter
 	BPL ballSetLoop		; loop around if we're still greater than 0
-		
+	
+ballSetPos:	
 	LDA #$FF		; Players and balls should be still.
 	STA PLAYERD0		;
 	STA PLAYERD1		;
@@ -403,7 +418,7 @@ SelectOK:
 	LDA GAMVAR
 	CLC
 	ADC #$01
-	CMP #$02
+	CMP #$04
 	BNE VarRST 
 	LDA #$01
 	STA GAMBCD
@@ -999,7 +1014,12 @@ MxToMxCollide:
 	BIT CXPPMM		; Check P/P M/M collision
 	BVC NoMxToMxCollide	; If not, skip this whole routine.
 	LDX #$01		; if yes, set up to update both M1 and M0
+	LDY #$01
 MxToMxCollideLoop:
+	TYA
+	EOR #$FF
+	AND #$01
+	TAY
 	LDA #$03
 	AND GAMESTATE
 	STA AUDV0,X
@@ -1010,6 +1030,12 @@ MxToMxCollideLoop:
 	ADC #$08		; reflect it
 	AND #$0F		; mask off to a legal direction
 	STA BALLD0,X		; store the vector
+	CMP BALLD0,Y
+	BNE NextMxToMxCollide
+	LDA BALLD0,Y
+	CLC
+	ADC #$03
+	STA BALLD0,Y
 	AND #$03		; check for N/S/E/W...
 	BNE NextMxToMxCollide	; if not, skip past direction increment
 	INC BALLD0,X		; add an additional 22.5 degress of counterclockwise direction.
@@ -1265,7 +1291,7 @@ Sleep12:
 
 	if (* & $FF)
 	  echo "----", [(>.+1)*256 - .]d, "bytes free before DigitGFX"
-	  align 256
+	  ;; align 256
 	endif
 
 	;;
@@ -1378,9 +1404,80 @@ GRPA:	.byte %00000000
 	;; Playfield Data
 	;;
 
-	
+PF0_0:	
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+PF1_0:	
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
+PF2_0:	
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
 
-PFData0
+PF0_1
 	.byte #%11110000
 	.byte #%00010000
 	.byte #%00010000
@@ -1404,7 +1501,7 @@ PFData0
 	.byte #%00010000
 	.byte #%00010000
 	.byte #%11110000
-PFData1
+PF1_1
 	.byte #%11111111
 	.byte #%00000000
 	.byte #%00000000
@@ -1428,7 +1525,7 @@ PFData1
 	.byte #%00000000
 	.byte #%00000000
 	.byte #%11111111
-PFData2
+PF2_1
 	.byte #%11111111
 	.byte #%10000000
 	.byte #%00000000
@@ -1452,6 +1549,171 @@ PFData2
 	.byte #%00000000
 	.byte #%10000000
 	.byte #%11111111
+
+PF0_2
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+PF1_2
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11100000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%01000000
+   .byte #%01000000
+   .byte #%01000000
+   .byte #%01000000
+   .byte #%01000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11100000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
+PF2_2
+   .byte #%11111111
+   .byte #%11000000
+   .byte #%10000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00011000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00011000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%10000000
+   .byte #%11000000
+   .byte #%11111111
+
+PF0_3
+   .byte #%11110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%01110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11110000
+PF1_3
+   .byte #%11111111
+   .byte #%00001000
+   .byte #%00001000
+   .byte #%00001000
+   .byte #%00011000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000110
+   .byte #%00000010
+   .byte #%00000010
+   .byte #%00000010
+   .byte #%00000010
+   .byte #%00000110
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%01110000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%11111111
+PF2_3
+   .byte #%11111111
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%11111111
+
+	
+PFDATA:
+	.byte #(<PF0_0)-6, #(<PF0_1)-6, #(<PF0_2)-6, #(<PF0_3)-6
+
+PFDATA1:
+	.byte #(>PF0_0), #(>PF0_1), #(>PF0_2), #(>PF0_3)
+
+PFDATA2:
+	.byte #(<PF1_0)-6, #(<PF1_1)-6, #(<PF1_2)-6, #(<PF1_3)-6
+
+PFDATA3:
+	.byte #(>PF1_0), #(>PF1_1), #(>PF1_2), #(>PF1_3)
+
+PFDATA4:
+	.byte #(<PF2_0)-6, #(<PF2_1)-6, #(<PF2_2)-6, #(<PF2_3)-6
+
+PFDATA5:
+	.byte #(>PF2_0), #(>PF2_1), #(>PF2_2), #(>PF2_3)
 	
 	
 PFOFFSET:
@@ -1460,8 +1722,10 @@ PFOFFSET:
 	;;
 	;; Game Variation Table
 	;;
-VARTBL:	.byte %00000000		; GAME 1 - Dodgeball
-	.byte %10000000		; GAME 2 - Ice Dodgeball
+VARTBL:	.byte %01000000		; GAME 1 - Dodgeball
+	.byte %10000001		; GAME 2 - Ice Dodgeball
+	.byte %00000010
+	.byte %10000011
 	.byte %11111111		; End of Variation Table
 
 	;;
@@ -1479,6 +1743,14 @@ COLRTBL:
 	;; X0, X1, Y0, Y1
 InitialPosTbl:
 	.byte $20, $80, $3F, $3F
+
+NoComputerBall:
+	LDA #$01
+	STA BALLX2
+	STA BALLY2
+	LDA #$FF
+	STA BALLD2
+	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; System Vectors
