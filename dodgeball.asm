@@ -526,7 +526,7 @@ noOP:	LDA INPT4,X		; scan fire button.
 	CMP #$80
 	BPL nofire		; if fire wasn't pressed, go to nofire
 fire:	LDA DEBOUNCE0,X
-	BMI next	
+	BMI next0	
 fire00:	LDA #$80
 	STA DEBOUNCE0,X
 	LDA DECAY0,Y
@@ -577,7 +577,11 @@ nofire:	LDA #$00
 	STA PLAYERD0,X		; store the new vector into player's direction.
 	CMP #$FF		; is it still?
 	BEQ nofire0		; yes, skip saving it.
-	STA BALLD0S,X	   	; store it for later. 
+	STA BALLD0S,X	   	; store it for later.
+	BIT GAMPFMODE		; Is bit 7 (ice mode on?)
+	BPL nofire0		; no, don't apply decay
+	LDA #$0F		; Yes, apply ice decay frames
+	STA DECAY2,X		; store them, if needed.
 nofire0:
 	LDA DECAY0,X		; Load decay
 	CMP #$00		; is ball dead?
@@ -596,6 +600,7 @@ nofire0:
 	TAY
 	LDA #$00
 	STA OPBALL0,Y
+	LDA BALLD0S,X
 next:	LDA TEMP3		; Re-grab saved SWCHA
 	LSR			; and shift out the already processed bytes
 	LSR			;
