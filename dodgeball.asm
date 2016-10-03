@@ -120,7 +120,9 @@ BALLD2:			ds 1	; Ball 2 Direction
 	;; 
 DECAY0:			ds 1	; Ball 0 Decay
 DECAY1:			ds 1	; Ball 1 Decay (computer ball 2 has no decay)
-
+DECAY2:			ds 1	; Player 0 Decay
+DECAY3:			ds 1	; Player 1 Decay
+	
 	;;
 	;; # of balls in hands
 	;; 
@@ -163,7 +165,7 @@ DEBOUNCE1:	 	ds 1	; debounce for P1
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	SEG CODE
-	ORG $F800		; 2K Cartridge
+	ORG $F000		; 2K Cartridge
 
 ColdStart:
 	CLEAN_START		; defined in macro.h
@@ -266,6 +268,7 @@ VBLNK:	SUBROUTINE
 	JSR BallDirection	; Compute ball directions
 	JSR PositionObjects	; And Position Objects
 	JSR UpdateTimer		; Update master timer if game running
+	JSR UpdatePlayerDecay	; Update player decay
 	JSR PrepScore		; Prepare score for kernel display.
 .waitUntilDone:
 	LDA INTIM		; Poll the timer
@@ -495,6 +498,8 @@ TIAdone:
 ;;; ;; Process Joysticks
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+next0:	JMP next		; for that long jump during decay compare.
+	
 ProcessJoysticks: SUBROUTINE
 	LDX #$01		; Start with Player 1
 	LDA SWCHA		; and scan the joysticks.
@@ -508,6 +513,8 @@ loop:	STA TEMP3		; now contains sticks, pre-mask
 	STA TEMP2		; now contains desired vector
 	TXA			;
 	TAY			; for now X and Y are the same
+	LDA DECAY2,X		; Check player's decay (slip or scoot amount)
+	BNE next0		; if not 0, skip to next player, do not process any direction.
 	LDA OPBALL0,X
 	BPL noOP
 	TYA
@@ -934,8 +941,10 @@ MxtoPLOPCollide:
 	SEC
 	LDA #$08
 	STA DECAY0,X
+	STA DECAY2,X
 	JSR RecallBallPosition
 	LDA BALLD0,X
+	STA PLAYERD0,X
 	ADC #$08
 	AND #$0F
 	STA BALLD0,X
@@ -977,6 +986,8 @@ MxtoOPcatch:
 MxtoOPscore:
 	LDA OPBALL0,Y
 	BMI nextMxtoOP
+	LDA #$08
+	STA DECAY2,Y
 	LDA #$03
 	AND GAMESTATE
 	STA AUDV0
@@ -995,6 +1006,7 @@ MxtoOPScoreBypass:
 	STA DECAY0,X		; store it so the ball will come to a halt, away from the player.
 	JSR RecallBallPosition	; PONG logic, recall ball position pre-collsion
 	LDA BALLD0,X		; get current ball direction
+	STA PLAYERD0,Y
 	ADC #$08		; reflect it
 	AND #$0F		; mask it off to a legal direction
 	STA BALLD0,X		; store the new ball vector
@@ -1291,7 +1303,7 @@ Sleep12:
 
 	if (* & $FF)
 	  echo "----", [(>.+1)*256 - .]d, "bytes free before DigitGFX"
-	  ;; align 256
+	  align 256
 	endif
 
 	;;
@@ -1744,12 +1756,21 @@ COLRTBL:
 InitialPosTbl:
 	.byte $20, $80, $3F, $3F
 
-NoComputerBall:
-	LDA #$01
-	STA BALLX2
-	STA BALLY2
-	LDA #$FF
-	STA BALLD2
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;; ;; UpdatePlayerDecay
+;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+UpdatePlayerDecay: SUBROUTINE
+	LDX #$01
+.loop:
+	LDA DECAY2,X
+	BEQ .next
+	SEC
+	SBC #$01
+	STA DECAY2,X
+.next:
+	DEX
+	BPL .loop
 	RTS
 	
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -1758,7 +1779,7 @@ NoComputerBall:
 
 	if (* & $FF)
 		echo "----", [$FFFA-*]d, "bytes free before end of cart."
-		;; align 256
+		align 256
 	endif
 	
 	ORG $FFFA
