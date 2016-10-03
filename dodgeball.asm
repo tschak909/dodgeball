@@ -1092,7 +1092,10 @@ BLtoPLCollide0:
 	LDX #$02		; 02 = computer ball
 	JSR RecallBallPosition	; recall computer ball's last pre-collision position
 	LDX TEMP		; restore X from TEMP
+	LDA #$0F
+	STA DECAY2,X
 	LDA BALLD2		; get computer ball's direction.
+	STA PLAYERD0,X
 	ADC #$08		; reflect it
 	AND #$0F		; mask it off to legal direction
 	STA BALLD2		; and set the new direction.
