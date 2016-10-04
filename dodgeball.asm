@@ -394,10 +394,10 @@ ballSetPos:
 	RTS			; and return.
 
 PositionX:
-	byte $04,$08,$0C,$4C,$7A,$8E,$90,$68
+	byte $0A,$4B,$4B,$4B,$80,$0A,$4F,$80
 
 PositionY:
-	byte $30,$4E,$54,$D6,$8E,$D8,$4C,$C0
+	byte $50,$96,$50,$D0,$50,$D0,$9A,$D0
 
 ;;; ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;; ;; GameSelect - Handle Select Pressed
