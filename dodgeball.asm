@@ -174,8 +174,13 @@ ColdStart:
 LoadRand:
 	LDA INTIM		; Get the current timer value (unknown and therefore somewhat random)
 	STA RAND		; and use it to seed the random number generator.
+
+	LDX #$00
+	LDA VARTBL,X
+	STA GAMPFMODE
 	
 	JSR GameReset		; Call Game Reset after cold start.
+	
 	LDA #$00
 	STA GAMVAR
 	LDA #$01
@@ -364,6 +369,19 @@ GameReset: SUBROUTINE
 	;; 
 	LDX #$02
 ballSetLoop:
+	LDA GAMPFMODE		; Check game mode
+	AND #$40		; BIT 6 = Turn on/off computer ball.
+	CMP #$40		; Is bit 6 set?
+	BNE ballSetLoop0	; nope? we want the computer ball, don't do the check
+	CPX #$02		; check if we are setting the computer ball
+	BNE ballSetLoop0	; if not, go send the ball on its way.
+	LDA #$9F		; set the computer ball to be off screen.
+	STA BALLX2		; store into Ball X2
+	LDA #$FF		; ...
+	STA BALLY2		; and set the Y2
+	STA BALLD2		; set the ball direction to also be $FF, or still.
+	BMI ballSetNext		; and go to the next ball.
+ballSetLoop0:	
 	JSR Random		; Generate random number
 	LDA RAND		; grab generated random #
 	AND #$07		; mask off upper 4 bits (we only want 16 values)
@@ -372,6 +390,7 @@ ballSetLoop:
 	STA BALLX0,X		; store in BALLx X position
 	LDA PositionY,Y		; Get Y position at index X
 	STA BALLY0,X		; store in BALLx Y position
+ballSetNext:	
 	DEX			; decrement loop counter
 	BPL ballSetLoop		; loop around if we're still greater than 0
 	
@@ -1743,7 +1762,7 @@ PFOFFSET:
 	;;
 	;; Game Variation Table
 	;;
-VARTBL:	.byte %01000000		; GAME 1 - Dodgeball
+VARTBL:	.byte %00000000		; GAME 1 - Dodgeball
 	.byte %10000001		; GAME 2 - Ice Dodgeball
 	.byte %00000010
 	.byte %10000011
