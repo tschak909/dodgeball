@@ -16,6 +16,7 @@
 ;;; Suspended: 		2016-07-30
 ;;; Restarted:		2016-08-26
 ;;; First Playable:	2016-09-18
+;;; Last Feature in:	2016-10-01
 	
 	PROCESSOR 6502
 
