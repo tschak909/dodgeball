@@ -1043,6 +1043,44 @@ nextMxtoOP:
 	DEX			; decrement X for next player
 	BPL MxtoOP		; if >=0 then loop back around for the next player.
 
+
+PlToPlCollide:
+	BIT CXPPMM		; Check P/P M/M collision
+	BPL NoPlToPlCollide	; If not, skip this whole routine.
+	LDX #$01		; if yes, set up to update both M1 and M0
+	LDY #$01
+PlToPlCollideLoop:
+	TYA
+	EOR #$FF
+	AND #$01
+	TAY
+	LDA #$03
+	AND GAMESTATE
+	STA AUDV0,X
+	JSR RecallBallPosition	; Recall the original ball position
+	LDA #$04		; decay now set to 8 frames
+	STA DECAY2,X		; for the current ball in the loop
+	LDA PLAYERD0,X		; get the ball vector
+	ADC #$04		; reflect it
+	AND #$0F		; mask off to a legal direction
+	STA PLAYERD0,X		; store the vector
+	CMP PLAYERD0,Y
+	BNE NextPlToPlCollide
+	LDA PLAYERD0,Y
+	CLC
+	ADC #$03
+	STA PLAYERD0,Y
+	AND #$03		; check for N/S/E/W...
+	BNE NextPlToPlCollide	; if not, skip past direction increment
+	INC PLAYERD0,X		; add an additional 22.5 degress of counterclockwise direction.
+NextPlToPlCollide:
+	JSR SaveBallPosition	; Save the resulting ball position
+	DEX			; decrement X
+	BPL PlToPlCollideLoop	; and if X >= 0, loop back around for the next ball.
+NoPlToPlCollide:	
+
+
+	
 	;;
 	;; When M0 and M1 balls hit each other.
 	;; 
