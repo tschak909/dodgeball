@@ -1043,6 +1043,9 @@ nextMxtoOP:
 	DEX			; decrement X for next player
 	BPL MxtoOP		; if >=0 then loop back around for the next player.
 
+	;;
+	;; Player collides with other player
+	;; 
 
 PlToPlCollide:
 	BIT CXPPMM		; Check P/P M/M collision
@@ -1061,7 +1064,7 @@ PlToPlCollideLoop:
 	LDA #$06		; decay now set to 8 frames
 	STA DECAY2,X		; for the current ball in the loop
 	LDA PLAYERD0,X		; get the ball vector
-	ADC #$04		; reflect it
+	ADC #$04		; sort of reflect it
 	AND #$0F		; mask off to a legal direction
 	STA PLAYERD0,X		; store the vector
 	CMP PLAYERD0,Y
@@ -1078,8 +1081,6 @@ NextPlToPlCollide:
 	DEX			; decrement X
 	BPL PlToPlCollideLoop	; and if X >= 0, loop back around for the next ball.
 NoPlToPlCollide:	
-
-
 	
 	;;
 	;; When M0 and M1 balls hit each other.
@@ -1286,7 +1287,6 @@ moveBall:
 	LDA PLAYERX0,X		; Get current ball X
 	CLC			; clear carry
 	ADC BallVectorX,Y	; Add the new vector difference
-	AND #$FE		; Make sure to quantise to 2LK boundaries so we don't get ripple.
 	STA PLAYERX0,X		; store it back into Ball X
 
 	;;
