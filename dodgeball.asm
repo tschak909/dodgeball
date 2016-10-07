@@ -1047,7 +1047,7 @@ nextMxtoOP:
 PlToPlCollide:
 	BIT CXPPMM		; Check P/P M/M collision
 	BPL NoPlToPlCollide	; If not, skip this whole routine.
-	LDX #$01		; if yes, set up to update both M1 and M0
+	LDX #$01		; if yes, set up to update both P1 and P0
 	LDY #$01
 PlToPlCollideLoop:
 	TYA
@@ -1058,7 +1058,7 @@ PlToPlCollideLoop:
 	AND GAMESTATE
 	STA AUDV0,X
 	JSR RecallBallPosition	; Recall the original ball position
-	LDA #$04		; decay now set to 8 frames
+	LDA #$06		; decay now set to 8 frames
 	STA DECAY2,X		; for the current ball in the loop
 	LDA PLAYERD0,X		; get the ball vector
 	ADC #$04		; reflect it
@@ -1286,6 +1286,7 @@ moveBall:
 	LDA PLAYERX0,X		; Get current ball X
 	CLC			; clear carry
 	ADC BallVectorX,Y	; Add the new vector difference
+	AND #$FE		; Make sure to quantise to 2LK boundaries so we don't get ripple.
 	STA PLAYERX0,X		; store it back into Ball X
 
 	;;
