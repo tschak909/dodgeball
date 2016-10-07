@@ -1295,7 +1295,10 @@ moveBall:
 	LDA PLAYERY0,X		; Get current ball Y
 	CLC			; clear carry
 	ADC BallVectorY,Y	; Add the new vector difference
-	STA PLAYERY0,X		; store it back into Ball Y
+	CPX #$01
+	BCS skipQT
+	AND #$FE
+skipQT:	STA PLAYERY0,X		; store it back into Ball Y
 
 	;;
 	;; If not done, do the next ball
