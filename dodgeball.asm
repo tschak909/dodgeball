@@ -787,13 +787,10 @@ KERNEL:	SUBROUTINE
 .saveStack:
 	TSX
 	STX STOREDSTACKPTR
-	STA WSYNC
 
-	;;
-	;; Currently a timing bug in kernel causing graphic glitch
-	;; on top right border.
-	;;
-	
+	; Enter the loop at cycle 33 to prevent PF from updating early the first scanline
+	STA WSYNC
+	SLEEP 33	
 .mainLoop:			; X	33
 	LDX #ENABL		; 2	35
 	TXS			; 2	37
@@ -813,10 +810,9 @@ KERNEL:	SUBROUTINE
 .doP0:				; X	63
 	LDA (PLAYERP0),Y	; 4	67
 .noP0:				; X	67
-	LDX SCANLINE		; 3	70
 	LDY TEMP		; 3	--
 	STA GRP0		; 3	3
-	TXA			; 2	5
+	LAX SCANLINE
 	EOR BALLY2		; 3	8
 	AND #$FC		; 2	10
 	PHP			; 3	13
