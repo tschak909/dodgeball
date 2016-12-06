@@ -535,27 +535,40 @@ loop:	STA TEMP3		; now contains sticks, pre-mask
 	TAY			; for now X and Y are the same
 	LDA DECAY2,X		; Check player's decay (slip or scoot amount)
 	BNE next0		; if not 0, skip to next player, do not process any direction.
-	LDA OPBALL0,X
-	BPL noOP
-	TYA
-	EOR #$FF
-	AND #$01
-	TAY
+	LDA OPBALL0,X		; get opposing ball flag
+	BPL noOP		; if no N, no opposing ball.
+	TYA			; otherwise, Y=A
+	EOR #$FF		; flip the value
+	AND #$01		; and it off to get the opposing player
+	TAY			; and put A back into Y so that Y now has opposing player.
 noOP:	LDA INPT4,X		; scan fire button.
-	AND #$80
-	CMP #$80
+	AND #$80		; We only want the fire button
+	CMP #$80		; is it pressed?
 	BPL nofire		; if fire wasn't pressed, go to nofire
-fire:	LDA DEBOUNCE0,X
-	BMI next0	
-fire00:	LDA #$80
-	STA DEBOUNCE0,X
+fire:	LDA DEBOUNCE0,X		; Load the debounce flag
+	BMI next0		; if it's set, then we're already handling this fire, skip.
+fire00:	LDA #$80		; otherwise set bit 7
+	STA DEBOUNCE0,X		; and store into debounce flag.
+	
+	;;
+	;; This may be the problem area. vvvvvvv
+	;; 
+
 	LDA DECAY0,Y
 	CMP #$00
 	BEQ fire01
+	LDA DECAY0,Y		; Get player decay
+	CMP #$00		; is it at zero?
+	BEQ fire01		; sure, it 
 	TYA
 	EOR #$FF
 	AND #$01
 	TAY
+
+	;;
+	;; This may be the problem area ^^^^^^^^
+	;;
+	
 fire01:	LDA BIH0,X		; Check if at least one ball in hand
 	CMP #$00		; no balls in hand?
 	BEQ playerStill		; no balls, don't throw.
@@ -1372,76 +1385,6 @@ Sleep12:
 	  align 256
 	endif
 
-	;;
-	;; digit graphics
-	;;
-
-DigitGFX:
-        .byte %00000111
-        .byte %00000101
-        .byte %00000101
-        .byte %00000101
-        .byte %00000111
-        
-        .byte %00010001
-        .byte %00010001
-        .byte %00010001
-        .byte %00010001        
-        .byte %00010001
-        
-        .byte %01110111
-        .byte %00010001
-        .byte %01110111
-        .byte %01000100
-        .byte %01110111
-        
-        .byte %01110111
-        .byte %00010001
-        .byte %00110011
-        .byte %00010001
-        .byte %01110111
-        
-        .byte %01010101
-        .byte %01010101
-        .byte %01110111
-        .byte %00010001
-        .byte %00010001
-        
-        .byte %01110111
-        .byte %01000100
-        .byte %01110111
-        .byte %00010001
-        .byte %01110111
-           
-        .byte %01110111
-        .byte %01000100
-        .byte %01110111
-        .byte %01010101
-        .byte %01110111
-        
-        .byte %01110111
-        .byte %00010001
-        .byte %00010001
-        .byte %00010001
-        .byte %00010001
-        
-        .byte %01110111
-        .byte %01010101
-        .byte %01110111
-        .byte %01010101
-        .byte %01110111
-        
-        .byte %01110111
-        .byte %01010101
-        .byte %01110111
-        .byte %00010001
-        .byte %01110111
-        
-        .byte %00000000     ; used to blank out right score in 1 player games
-        .byte %00000000
-        .byte %00000000
-        .byte %00000000
-        .byte %00000000
 
 GRP:
 	.byte %00000000
@@ -1481,7 +1424,7 @@ GRPA:	.byte %00000000
 	;;
 	;; Playfield Data
 	;;
-
+	
 PF0_0:	
    .byte #%11110000
    .byte #%00010000
@@ -1652,6 +1595,7 @@ PF0_2
    .byte #%00010000
    .byte #%00010000
    .byte #%11110000
+
 PF1_2
    .byte #%11111111
    .byte #%00000000
@@ -1701,20 +1645,94 @@ PF2_2
    .byte #%11000000
    .byte #%11111111
 
+;; PF0_3
+;;    .byte #%11110000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%01110000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%11110000
+;; PF1_3
+;;    .byte #%11111111
+;;    .byte #%00001000
+;;    .byte #%00001000
+;;    .byte #%00001000
+;;    .byte #%00011000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000110
+;;    .byte #%00000010
+;;    .byte #%00000010
+;;    .byte #%00000010
+;;    .byte #%00000010
+;;    .byte #%00000110
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%01110000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%00010000
+;;    .byte #%11111111
+;; PF2_3
+;;    .byte #%11111111
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%00000000
+;;    .byte #%11111111
+
+
 PF0_3
    .byte #%11110000
    .byte #%00010000
    .byte #%00010000
    .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
+   .byte #%00010000
    .byte #%01110000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
+   .byte #%01110000
    .byte #%00010000
    .byte #%00010000
    .byte #%00010000
@@ -1727,53 +1745,126 @@ PF0_3
    .byte #%11110000
 PF1_3
    .byte #%11111111
-   .byte #%00001000
-   .byte #%00001000
-   .byte #%00001000
-   .byte #%00011000
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
-   .byte #%00000110
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000011
    .byte #%00000010
    .byte #%00000010
    .byte #%00000010
    .byte #%00000010
-   .byte #%00000110
+   .byte #%00000010
+   .byte #%00000011
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
-   .byte #%01110000
-   .byte #%00010000
-   .byte #%00010000
-   .byte #%00010000
+   .byte #%00000001
+   .byte #%00000000
+   .byte #%00000000
    .byte #%11111111
 PF2_3
    .byte #%11111111
    .byte #%00000000
    .byte #%00000000
+   .byte #%00000111
+   .byte #%00001100
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000000
+   .byte #%00000111
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
    .byte #%00000000
+   .byte #%00000111
    .byte #%00000000
    .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
-   .byte #%00000000
+   .byte #%00000011
+   .byte #%00000001
+   .byte #%11000000
+   .byte #%11000000
    .byte #%11111111
 
+
+	
+	;;
+	;; digit graphics
+	;;
+
+DigitGFX:
+        .byte %00000111
+        .byte %00000101
+        .byte %00000101
+        .byte %00000101
+        .byte %00000111
+        
+        .byte %00010001
+        .byte %00010001
+        .byte %00010001
+        .byte %00010001        
+        .byte %00010001
+        
+        .byte %01110111
+        .byte %00010001
+        .byte %01110111
+        .byte %01000100
+        .byte %01110111
+        
+        .byte %01110111
+        .byte %00010001
+        .byte %00110011
+        .byte %00010001
+        .byte %01110111
+        
+        .byte %01010101
+        .byte %01010101
+        .byte %01110111
+        .byte %00010001
+        .byte %00010001
+        
+        .byte %01110111
+        .byte %01000100
+        .byte %01110111
+        .byte %00010001
+        .byte %01110111
+           
+        .byte %01110111
+        .byte %01000100
+        .byte %01110111
+        .byte %01010101
+        .byte %01110111
+        
+        .byte %01110111
+        .byte %00010001
+        .byte %00010001
+        .byte %00010001
+        .byte %00010001
+        
+        .byte %01110111
+        .byte %01010101
+        .byte %01110111
+        .byte %01010101
+        .byte %01110111
+        
+        .byte %01110111
+        .byte %01010101
+        .byte %01110111
+        .byte %00010001
+        .byte %01110111
+        
+        .byte %00000000     ; used to blank out right score in 1 player games
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+        .byte %00000000
+	
 	
 PFDATA:
 	.byte #(<PF0_0)-6, #(<PF0_1)-6, #(<PF0_2)-6, #(<PF0_3)-6
@@ -1804,6 +1895,7 @@ VARTBL:	.byte %00000000		; GAME 1 - Dodgeball
 	.byte %10000001		; GAME 2 - Ice Dodgeball
 	.byte %00000010
 	.byte %10000011
+	.byte %11000000
 	.byte %11111111		; End of Variation Table
 
 	;;
